@@ -1,0 +1,8 @@
+{
+  "name": "Remix DSI IM",
+  "description": "Enterprise inventory management system tracking Asset ID, Description, Stock Quantity, Ongoing Project Allocations, Units, Replenishment Reorder Status, and Add Item workflows.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
