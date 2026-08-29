@@ -1,5 +1,17 @@
 import React, { useState } from 'react';
-import { X, Trash2, AlertTriangle, Building2, CheckSquare, Square, Search } from 'lucide-react';
+import {
+  X,
+  Trash2,
+  AlertTriangle,
+  Building2,
+  CheckSquare,
+  Square,
+  Search,
+  Lock,
+  Eye,
+  EyeOff,
+  ShieldAlert,
+} from 'lucide-react';
 import { Project, InventoryItem } from '../types';
 
 interface RemoveProjectModalProps {
@@ -10,6 +22,8 @@ interface RemoveProjectModalProps {
   onDeleteProject: (projectId: string) => void;
   onDeleteMultipleProjects: (projectIds: string[]) => void;
 }
+
+const REQUIRED_DELETE_PASSWORD = 'aerith0818';
 
 export const RemoveProjectModal: React.FC<RemoveProjectModalProps> = ({
   isOpen,
@@ -22,6 +36,12 @@ export const RemoveProjectModal: React.FC<RemoveProjectModalProps> = ({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
+  const [isBulkDeleteConfirm, setIsBulkDeleteConfirm] = useState(false);
+
+  // Security password state
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
 
   if (!isOpen) return null;
 
@@ -53,7 +73,10 @@ export const RemoveProjectModal: React.FC<RemoveProjectModalProps> = ({
     items.forEach((item) => {
       if (item.projectAllocations) {
         item.projectAllocations.forEach((alloc) => {
-          if (alloc.projectId === projectId) {
+          if (
+            alloc.projectId?.toLowerCase() === projectId.toLowerCase() ||
+            alloc.projectName?.toLowerCase() === projectId.toLowerCase()
+          ) {
             count += alloc.quantity;
           }
         });
@@ -62,23 +85,58 @@ export const RemoveProjectModal: React.FC<RemoveProjectModalProps> = ({
     return count;
   };
 
-  const confirmSingleDelete = (project: Project) => {
+  const resetPasswordState = () => {
+    setPasswordInput('');
+    setPasswordError('');
+    setShowPassword(false);
+  };
+
+  const handleStartSingleDelete = (project: Project) => {
+    resetPasswordState();
+    setIsBulkDeleteConfirm(false);
     setProjectToDelete(project);
   };
 
-  const executeSingleDelete = () => {
+  const handleStartBulkDelete = () => {
+    if (selectedIds.length === 0) return;
+    resetPasswordState();
+    setProjectToDelete(null);
+    setIsBulkDeleteConfirm(true);
+  };
+
+  const cancelDeleteConfirm = () => {
+    setProjectToDelete(null);
+    setIsBulkDeleteConfirm(false);
+    resetPasswordState();
+  };
+
+  const executeSingleDelete = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordInput !== REQUIRED_DELETE_PASSWORD) {
+      setPasswordError('Maling password! Ilagay ang tamang security password para ma-delete ang project.');
+      return;
+    }
+
     if (projectToDelete) {
       onDeleteProject(projectToDelete.id);
-      setProjectToDelete(null);
       setSelectedIds((prev) => prev.filter((id) => id !== projectToDelete.id));
+      cancelDeleteConfirm();
     }
   };
 
-  const executeBulkDelete = () => {
-    if (selectedIds.length === 0) return;
-    onDeleteMultipleProjects(selectedIds);
-    setSelectedIds([]);
-    onClose();
+  const executeBulkDelete = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passwordInput !== REQUIRED_DELETE_PASSWORD) {
+      setPasswordError('Maling password! Ilagay ang tamang security password para ma-delete ang projects.');
+      return;
+    }
+
+    if (selectedIds.length > 0) {
+      onDeleteMultipleProjects(selectedIds);
+      setSelectedIds([]);
+      cancelDeleteConfirm();
+      onClose();
+    }
   };
 
   return (
@@ -86,7 +144,10 @@ export const RemoveProjectModal: React.FC<RemoveProjectModalProps> = ({
       id="remove-project-modal-backdrop"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) {
+          cancelDeleteConfirm();
+          onClose();
+        }
       }}
     >
       <div
@@ -101,11 +162,16 @@ export const RemoveProjectModal: React.FC<RemoveProjectModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold tracking-tight">Remove / Delete Projects</h2>
-              <p className="text-xs text-slate-400">Select project records to remove from the system</p>
+              <p className="text-xs text-slate-400">
+                Ligtas na magbura ng project record (Nangangailangan ng Admin Password)
+              </p>
             </div>
           </div>
           <button
-            onClick={onClose}
+            onClick={() => {
+              cancelDeleteConfirm();
+              onClose();
+            }}
             className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
@@ -152,8 +218,8 @@ export const RemoveProjectModal: React.FC<RemoveProjectModalProps> = ({
                   {selectedIds.length > 0 && (
                     <button
                       type="button"
-                      onClick={executeBulkDelete}
-                      className="px-3 py-1 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm transition-colors flex items-center space-x-1"
+                      onClick={handleStartBulkDelete}
+                      className="px-3 py-1 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm transition-colors flex items-center space-x-1 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       <span>Delete Selected ({selectedIds.length})</span>
@@ -208,8 +274,8 @@ export const RemoveProjectModal: React.FC<RemoveProjectModalProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => confirmSingleDelete(project)}
-                        className="px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100/70 border border-rose-200 rounded-md transition-colors"
+                        onClick={() => handleStartSingleDelete(project)}
+                        className="px-2.5 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-100/70 border border-rose-200 rounded-md transition-colors cursor-pointer"
                       >
                         Delete
                       </button>
@@ -220,44 +286,160 @@ export const RemoveProjectModal: React.FC<RemoveProjectModalProps> = ({
             </>
           )}
 
-          {/* Single Delete Confirmation Dialog */}
+          {/* Single Delete Confirmation with Password Required */}
           {projectToDelete && (
-            <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-3 animate-in fade-in">
+            <form
+              onSubmit={executeSingleDelete}
+              className="p-4 bg-rose-50/90 border border-rose-200 rounded-xl space-y-3 animate-in fade-in"
+            >
               <div className="flex items-start space-x-3">
-                <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
-                <div className="text-xs text-rose-900">
-                  <p className="font-bold text-sm">Delete "{projectToDelete.name}" ({projectToDelete.id})?</p>
-                  <p className="mt-1">
-                    Are you sure you want to remove this project? This action cannot be undone.
+                <ShieldAlert className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-rose-900 space-y-1">
+                  <p className="font-bold text-sm">
+                    Kumpirmahin ang Pag-delete sa "{projectToDelete.name}" ({projectToDelete.id})
+                  </p>
+                  <p className="text-slate-600">
+                    Upang maiwasan ang aksidenteng pagbura, kailangan ilagay ang admin authorization password.
                   </p>
                 </div>
               </div>
+
+              {/* Password Input */}
+              <div className="space-y-1.5 pt-1">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-1">
+                  <Lock className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Admin Password</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={passwordInput}
+                    onChange={(e) => {
+                      setPasswordInput(e.target.value);
+                      if (passwordError) setPasswordError('');
+                    }}
+                    placeholder="Enter security password to confirm..."
+                    autoFocus
+                    className={`w-full pl-3 pr-10 py-2 text-xs bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono ${
+                      passwordError ? 'border-red-500 bg-red-50/30' : 'border-slate-300'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {passwordError && (
+                  <p className="text-xs text-red-600 font-semibold">{passwordError}</p>
+                )}
+              </div>
+
               <div className="flex items-center justify-end space-x-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setProjectToDelete(null)}
-                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-white rounded-lg border border-slate-200"
+                  onClick={cancelDeleteConfirm}
+                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-white rounded-lg border border-slate-200 cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
-                  type="button"
-                  onClick={executeSingleDelete}
-                  className="px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm"
+                  type="submit"
+                  className="px-4 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm flex items-center space-x-1.5 cursor-pointer"
                 >
-                  Yes, Delete Project
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Authorize & Delete Project</span>
                 </button>
               </div>
-            </div>
+            </form>
+          )}
+
+          {/* Bulk Delete Confirmation with Password Required */}
+          {isBulkDeleteConfirm && (
+            <form
+              onSubmit={executeBulkDelete}
+              className="p-4 bg-rose-50/90 border border-rose-200 rounded-xl space-y-3 animate-in fade-in"
+            >
+              <div className="flex items-start space-x-3">
+                <ShieldAlert className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-rose-900 space-y-1">
+                  <p className="font-bold text-sm">
+                    Delete {selectedIds.length} Selected Project(s)?
+                  </p>
+                  <p className="text-slate-600">
+                    Mabubura ang lahat ng napiling projects. Ilagay ang admin password para ituloy.
+                  </p>
+                </div>
+              </div>
+
+              {/* Password Input */}
+              <div className="space-y-1.5 pt-1">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-1">
+                  <Lock className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Admin Password</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={passwordInput}
+                    onChange={(e) => {
+                      setPasswordInput(e.target.value);
+                      if (passwordError) setPasswordError('');
+                    }}
+                    placeholder="Enter security password to confirm..."
+                    autoFocus
+                    className={`w-full pl-3 pr-10 py-2 text-xs bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono ${
+                      passwordError ? 'border-red-500 bg-red-50/30' : 'border-slate-300'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {passwordError && (
+                  <p className="text-xs text-red-600 font-semibold">{passwordError}</p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={cancelDeleteConfirm}
+                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-white rounded-lg border border-slate-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Authorize & Delete All Selected</span>
+                </button>
+              </div>
+            </form>
           )}
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-end">
+        <div className="px-6 py-3.5 bg-slate-50 border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+          <span className="flex items-center space-x-1">
+            <Lock className="w-3.5 h-3.5 text-slate-400" />
+            <span>Protected by Admin Password</span>
+          </span>
           <button
             type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+            onClick={() => {
+              cancelDeleteConfirm();
+              onClose();
+            }}
+            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors cursor-pointer"
           >
             Close
           </button>

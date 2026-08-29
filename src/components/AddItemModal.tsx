@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Plus, PackagePlus, Sparkles, AlertCircle, ArrowUpRight } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Plus, PackagePlus, Sparkles, ArrowUpRight } from 'lucide-react';
 import { InventoryItem, ItemCategory } from '../types';
 import { generateNextAssetId } from '../utils/inventoryHelpers';
 
@@ -11,9 +11,10 @@ interface AddItemModalProps {
     itemId: string,
     additionalQty: number,
     notes?: string,
-    unitPrice?: number,
+    newUnitPrice?: number,
+    poNumber?: string,
     supplier?: string,
-    poNumber?: string
+    receivedBy?: string
   ) => void;
   existingItems: InventoryItem[];
   preselectedItemId?: string | null;
@@ -70,41 +71,53 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
   const [selectedRestockId, setSelectedRestockId] = useState<string>('');
   const [restockQty, setRestockQty] = useState<number | ''>(10);
   const [restockUnitPrice, setRestockUnitPrice] = useState<number | ''>('');
+  const [restockPoNumber, setRestockPoNumber] = useState('');
   const [restockSupplier, setRestockSupplier] = useState('');
+  const [restockReceivedBy, setRestockReceivedBy] = useState("M' Chrissna");
   const [restockNote, setRestockNote] = useState('');
-  const [restockPONumber, setRestockPONumber] = useState('');
 
-  // Sync state when modal opens or preselectedItemId changes
-  React.useEffect(() => {
+  // Sync state whenever modal opens or preselected item changes
+  useEffect(() => {
     if (isOpen) {
       setErrors({});
       if (preselectedItemId) {
         setMode('add_stock');
         setSelectedRestockId(preselectedItemId);
-        const item = existingItems.find((i) => i.id === preselectedItemId);
+        const item = existingItems.find(
+          (i) => i.id === preselectedItemId || i.assetId.toLowerCase() === preselectedItemId.toLowerCase()
+        );
         if (item) {
-          if (item.unitPrice) setRestockUnitPrice(item.unitPrice);
-          const suggested = Math.max(1, (item.minReorderLevel * 2) - item.stockQty);
-          setRestockQty(suggested > 0 ? suggested : 10);
+          setRestockUnitPrice(item.unitPrice !== undefined ? item.unitPrice : '');
+          const needed = Math.max(1, (item.minReorderLevel || 5) * 2 - item.stockQty);
+          setRestockQty(needed > 0 ? needed : 10);
         }
       } else {
         setMode('new_item');
+        setCategory('Hand Tools');
         setAssetId(generateNextAssetId('Hand Tools', existingItems));
+        setDescription('');
+        setUnit('pcs');
+        setCustomUnit('');
+        setStockQty(1);
+        setMinReorderLevel(5);
+        setUnitPrice('');
+        setLocation('Lumiere');
+        setBrandModel('');
+        setNotes('');
+
         if (existingItems.length > 0) {
           setSelectedRestockId(existingItems[0].id);
-          if (existingItems[0].unitPrice) {
-            setRestockUnitPrice(existingItems[0].unitPrice);
-          }
+          setRestockUnitPrice(existingItems[0].unitPrice !== undefined ? existingItems[0].unitPrice : '');
         }
       }
     }
   }, [isOpen, preselectedItemId, existingItems]);
 
-  // When selectedRestockId changes, update default unit price
-  React.useEffect(() => {
+  // When changing selected restock item in dropdown, update current price suggestion
+  useEffect(() => {
     if (selectedRestockId) {
       const item = existingItems.find((i) => i.id === selectedRestockId);
-      if (item && item.unitPrice !== undefined) {
+      if (item && item.unitPrice !== undefined && restockUnitPrice === '') {
         setRestockUnitPrice(item.unitPrice);
       }
     }
@@ -167,32 +180,31 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
 
   const handleSubmitRestock = (e: React.FormEvent) => {
     e.preventDefault();
-    const targetId = selectedRestockId || (existingItems.length > 0 ? existingItems[0].id : '');
-    if (!targetId) {
-      setErrors({ restockTarget: 'Please select an item from inventory to restock.' });
+    const effectiveRestockId = selectedRestockId || (existingItems.length > 0 ? existingItems[0].id : '');
+    if (!effectiveRestockId) {
+      setErrors({ selectedRestockId: 'Please select an item from inventory to restock.' });
       return;
     }
-    const numQty = Number(restockQty);
-    if (restockQty === '' || isNaN(numQty) || numQty <= 0) {
+    if (restockQty === '' || Number(restockQty) <= 0) {
       setErrors({ restockQty: 'Quantity to add must be greater than 0' });
       return;
     }
 
-    const priceNum = restockUnitPrice === '' ? undefined : Number(restockUnitPrice);
-
+    const numericPrice = restockUnitPrice === '' ? undefined : Math.max(0, Number(restockUnitPrice));
     onRestockItem(
-      targetId,
-      numQty,
+      effectiveRestockId,
+      Number(restockQty),
       restockNote.trim() || undefined,
-      priceNum !== undefined && !isNaN(priceNum) && priceNum >= 0 ? priceNum : undefined,
+      numericPrice,
+      restockPoNumber.trim() || undefined,
       restockSupplier.trim() || undefined,
-      restockPONumber.trim() || undefined
+      restockReceivedBy.trim() || undefined
     );
     onClose();
   };
 
   const selectedRestockItem = existingItems.find(
-    (i) => i.id === (selectedRestockId || (existingItems.length > 0 ? existingItems[0].id : ''))
+    (i) => i.id === selectedRestockId || (selectedRestockId && i.assetId.toLowerCase() === selectedRestockId.toLowerCase())
   );
 
   return (
@@ -252,6 +264,9 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
             onClick={() => {
               setMode('add_stock');
               setErrors({});
+              if (!selectedRestockId && existingItems.length > 0) {
+                setSelectedRestockId(existingItems[0].id);
+              }
             }}
             className={`pb-3 text-sm font-semibold flex items-center space-x-2 border-b-2 transition-all cursor-pointer ${
               mode === 'add_stock'
@@ -357,101 +372,81 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
                   type="text"
                   value={location}
                   onChange={(e) => setLocation(e.target.value)}
-                  placeholder="e.g. Lumiere"
+                  placeholder="e.g. Lumiere / Tool Room A"
                   className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </div>
             </div>
 
-            {/* Quantities: Stock, Min Reorder Level, Unit */}
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
-              <div className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
-                <span>Quantities & Stock Controls</span>
-                <span className="text-[11px] text-teal-700 font-normal">
-                  Auto-status calculated
-                </span>
+            {/* Initial Stock, Unit, and Min Reorder Level */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Initial Stock Qty *
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={stockQty}
+                  onChange={(e) =>
+                    setStockQty(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))
+                  }
+                  className={`w-full px-3 py-2 text-sm bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 ${
+                    errors.stockQty ? 'border-red-500' : 'border-slate-300'
+                  }`}
+                />
+                {errors.stockQty && (
+                  <p className="text-xs text-red-600 mt-1">{errors.stockQty}</p>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {/* Available Stock */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    Available Stock Qty *
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={stockQty}
-                    onChange={(e) => setStockQty(e.target.value === '' ? '' : Number(e.target.value))}
-                    className={`w-full px-2.5 py-1.5 text-sm font-semibold bg-white border rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 ${
-                      errors.stockQty ? 'border-red-500' : 'border-slate-300'
-                    }`}
-                  />
-                  {errors.stockQty && <p className="text-[10px] text-red-600 mt-0.5">{errors.stockQty}</p>}
-                </div>
-
-                {/* Min Reorder Threshold */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    Min Reorder Level *
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={minReorderLevel}
-                    onChange={(e) =>
-                      setMinReorderLevel(e.target.value === '' ? '' : Number(e.target.value))
-                    }
-                    title="If available stock falls below or equal to this, alert for replenishment is shown"
-                    className={`w-full px-2.5 py-1.5 text-sm font-semibold bg-white border rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500 ${
-                      errors.minReorderLevel ? 'border-red-500' : 'border-slate-300'
-                    }`}
-                  />
-                  {errors.minReorderLevel && (
-                    <p className="text-[10px] text-red-600 mt-0.5">{errors.minReorderLevel}</p>
-                  )}
-                </div>
-
-                {/* Unit */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    Unit *
-                  </label>
-                  <select
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value)}
-                    className="w-full px-2.5 py-1.5 text-sm bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  >
-                    {COMMON_UNITS.map((u) => (
-                      <option key={u} value={u}>
-                        {u}
-                      </option>
-                    ))}
-                    <option value="custom">Other (Custom)</option>
-                  </select>
-                </div>
-              </div>
-
-              {unit === 'custom' && (
-                <div className="pt-1">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Unit of Measure *
+                </label>
+                <select
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value)}
+                  className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                >
+                  {COMMON_UNITS.map((u) => (
+                    <option key={u} value={u}>
+                      {u}
+                    </option>
+                  ))}
+                  <option value="custom">+ Custom Unit...</option>
+                </select>
+                {unit === 'custom' && (
                   <input
                     type="text"
-                    placeholder="Enter custom unit (e.g. bundle, length, spool)"
                     value={customUnit}
                     onChange={(e) => setCustomUnit(e.target.value)}
-                    className="w-full px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-md focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="Enter unit (e.g. pail, bag)"
+                    className="w-full mt-2 px-3 py-1.5 text-xs bg-white border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500"
                   />
-                  {errors.unit && <p className="text-xs text-red-600 mt-1">{errors.unit}</p>}
-                </div>
-              )}
+                )}
+              </div>
 
-              {/* Threshold Note Helper */}
-              <div className="text-[11px] text-slate-500 flex items-center space-x-1.5 pt-1">
-                <AlertCircle className="w-3.5 h-3.5 text-teal-600 flex-shrink-0" />
-                <span>
-                  Status will automatically mark as <strong>"Order to Replenish"</strong> whenever
-                  Warehouse Stock ≤ Min Reorder Level.
-                </span>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Min Reorder Level *
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={minReorderLevel}
+                  onChange={(e) =>
+                    setMinReorderLevel(
+                      e.target.value === '' ? '' : Math.max(0, Number(e.target.value))
+                    )
+                  }
+                  className={`w-full px-3 py-2 text-sm bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 ${
+                    errors.minReorderLevel ? 'border-red-500' : 'border-slate-300'
+                  }`}
+                />
+                {errors.minReorderLevel && (
+                  <p className="text-xs text-red-600 mt-1">{errors.minReorderLevel}</p>
+                )}
               </div>
             </div>
 
@@ -529,217 +524,201 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 type="submit"
                 id="btn-save-new-item"
-                className="px-5 py-2 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm transition-colors flex items-center space-x-2"
+                className="px-5 py-2 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm transition-colors flex items-center space-x-2 cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
-                <span>Save New Item</span>
+                <span>Save New Item to Inventory</span>
               </button>
             </div>
           </form>
         ) : (
           /* Mode: Replenish Existing Stocks */
-          existingItems.length === 0 ? (
-            <div className="p-8 text-center space-y-3">
-              <div className="w-12 h-12 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mx-auto border border-amber-200">
-                <AlertCircle className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-bold text-slate-800">No Inventory Items Registered Yet</h3>
-              <p className="text-xs text-slate-500 max-w-md mx-auto">
-                There are no existing assets in the inventory to replenish. Please switch to "Create New Asset" to register your first item.
-              </p>
-              <button
-                type="button"
-                onClick={() => setMode('new_item')}
-                className="mt-2 px-4 py-2 text-xs font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors inline-flex items-center space-x-1.5"
+          <form onSubmit={handleSubmitRestock} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Select Asset to Restock / Replenish *
+              </label>
+              <select
+                value={selectedRestockId}
+                onChange={(e) => {
+                  setSelectedRestockId(e.target.value);
+                  const item = existingItems.find((i) => i.id === e.target.value);
+                  if (item && item.unitPrice !== undefined) {
+                    setRestockUnitPrice(item.unitPrice);
+                  }
+                }}
+                className="w-full px-3 py-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
               >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Create New Asset Now</span>
-              </button>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmitRestock} className="p-6 space-y-4 max-h-[75vh] overflow-y-auto">
-              {errors.restockTarget && (
-                <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-xs text-red-700 font-semibold">
-                  {errors.restockTarget}
-                </div>
-              )}
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Select Asset to Restock *
-                </label>
-                <select
-                  value={selectedRestockId}
-                  onChange={(e) => setSelectedRestockId(e.target.value)}
-                  className="w-full px-3 py-2.5 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-                >
-                  {existingItems.map((item) => (
+                {existingItems.length === 0 ? (
+                  <option value="">No items registered in inventory yet</option>
+                ) : (
+                  existingItems.map((item) => (
                     <option key={item.id} value={item.id}>
                       [{item.assetId}] {item.description} — (Current Stock: {item.stockQty} {item.unit})
                     </option>
-                  ))}
-                </select>
-              </div>
-
-              {selectedRestockItem && (
-                <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-1.5">
-                  <div className="flex items-center justify-between text-slate-700">
-                    <span className="font-semibold">Current In-Stock Quantity:</span>
-                    <span className="font-bold text-slate-900 text-sm">
-                      {selectedRestockItem.stockQty} {selectedRestockItem.unit}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-slate-600">
-                    <span>Min Reorder Level:</span>
-                    <span className="font-medium text-amber-700">
-                      {selectedRestockItem.minReorderLevel} {selectedRestockItem.unit}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-slate-600">
-                    <span>Storage Location:</span>
-                    <span className="font-medium text-slate-800">
-                      {selectedRestockItem.location || 'Not specified'}
-                    </span>
-                  </div>
-                  {selectedRestockItem.unitPrice !== undefined && (
-                    <div className="flex items-center justify-between text-slate-600">
-                      <span>Registered Unit Price:</span>
-                      <span className="font-semibold text-emerald-800">
-                        ₱{selectedRestockItem.unitPrice.toLocaleString()} / {selectedRestockItem.unit}
-                      </span>
-                    </div>
-                  )}
-                </div>
+                  ))
+                )}
+              </select>
+              {errors.selectedRestockId && (
+                <p className="text-xs text-red-600 mt-1">{errors.selectedRestockId}</p>
               )}
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Quantity to Add / Inflow *
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={restockQty}
-                    onChange={(e) => setRestockQty(e.target.value === '' ? '' : Number(e.target.value))}
-                    className={`w-full px-3 py-2 text-sm font-bold bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 ${
-                      errors.restockQty ? 'border-red-500' : 'border-slate-300'
-                    }`}
-                    placeholder="e.g. 10"
-                  />
-                  {errors.restockQty && (
-                    <p className="text-xs text-red-600 mt-1">{errors.restockQty}</p>
-                  )}
-                  {selectedRestockItem && restockQty !== '' && (
-                    <p className="text-[11px] text-teal-700 font-medium mt-1">
-                      New Stock will be:{' '}
-                      <strong>
-                        {selectedRestockItem.stockQty + Number(restockQty)} {selectedRestockItem.unit}
-                      </strong>
-                    </p>
-                  )}
+            {selectedRestockItem && (
+              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-1.5">
+                <div className="flex items-center justify-between text-slate-700">
+                  <span className="font-semibold">Current In-Stock Quantity:</span>
+                  <span className="font-bold text-slate-900 text-sm">
+                    {selectedRestockItem.stockQty} {selectedRestockItem.unit}
+                  </span>
                 </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Unit Purchase Price (₱)
-                  </label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                      ₱
-                    </span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      placeholder="0.00"
-                      value={restockUnitPrice}
-                      onChange={(e) =>
-                        setRestockUnitPrice(e.target.value === '' ? '' : Number(e.target.value))
-                      }
-                      className="w-full pl-7 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-                    />
-                  </div>
-                  {restockUnitPrice !== '' && restockQty !== '' && (
-                    <p className="text-[11px] text-emerald-700 font-semibold mt-1">
-                      Total Inflow Cost: ₱
-                      {(Number(restockUnitPrice) * Number(restockQty)).toLocaleString(undefined, {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </p>
-                  )}
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>Min Reorder Level:</span>
+                  <span className="font-medium text-amber-700">
+                    {selectedRestockItem.minReorderLevel} {selectedRestockItem.unit}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>Storage Location:</span>
+                  <span className="font-medium text-slate-800">
+                    {selectedRestockItem.location || 'Lumiere Warehouse'}
+                  </span>
                 </div>
               </div>
+            )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    PO / DR Reference #
-                  </label>
-                  <input
-                    type="text"
-                    value={restockPONumber}
-                    onChange={(e) => setRestockPONumber(e.target.value)}
-                    placeholder="e.g. PO-2026-881 / DR-4092"
-                    className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    Supplier / Vendor
-                  </label>
-                  <input
-                    type="text"
-                    value={restockSupplier}
-                    onChange={(e) => setRestockSupplier(e.target.value)}
-                    placeholder="e.g. DSI Central Hardware / Wilcon"
-                    className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-                  />
-                </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Quantity to Add / Inflow *
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={restockQty}
+                  onChange={(e) => setRestockQty(e.target.value === '' ? '' : Number(e.target.value))}
+                  className={`w-full px-3 py-2 text-sm font-bold bg-white border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 ${
+                    errors.restockQty ? 'border-red-500' : 'border-slate-300'
+                  }`}
+                  placeholder="e.g. 10"
+                />
+                {errors.restockQty && (
+                  <p className="text-xs text-red-600 mt-1">{errors.restockQty}</p>
+                )}
+                {selectedRestockItem && restockQty !== '' && (
+                  <p className="text-[11px] text-teal-700 font-medium mt-1">
+                    New Stock will be:{' '}
+                    <strong>
+                      {selectedRestockItem.stockQty + Number(restockQty)} {selectedRestockItem.unit}
+                    </strong>
+                  </p>
+                )}
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Delivery Notes / Remarks
+                  Unit Purchase Cost (PHP / ₱)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-400">
+                    ₱
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={restockUnitPrice}
+                    onChange={(e) =>
+                      setRestockUnitPrice(e.target.value === '' ? '' : Number(e.target.value))
+                    }
+                    placeholder="0.00"
+                    className="w-full pl-8 pr-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Updates inventory unit valuation</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  PO / DR / Receipt #
                 </label>
                 <input
                   type="text"
-                  value={restockNote}
-                  onChange={(e) => setRestockNote(e.target.value)}
-                  placeholder="e.g. Received in good condition at Lumiere tool room"
-                  className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  value={restockPoNumber}
+                  onChange={(e) => setRestockPoNumber(e.target.value)}
+                  placeholder="e.g. PO-2026-881"
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </div>
 
-              {/* Actions */}
-              <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  id="btn-confirm-restock"
-                  className="px-5 py-2 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm transition-colors flex items-center space-x-2"
-                >
-                  <ArrowUpRight className="w-4 h-4" />
-                  <span>Confirm Stock Replenishment</span>
-                </button>
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Supplier / Vendor
+                </label>
+                <input
+                  type="text"
+                  value={restockSupplier}
+                  onChange={(e) => setRestockSupplier(e.target.value)}
+                  placeholder="e.g. Manila Depot"
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
               </div>
-            </form>
-          )
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Received By
+                </label>
+                <input
+                  type="text"
+                  value={restockReceivedBy}
+                  onChange={(e) => setRestockReceivedBy(e.target.value)}
+                  placeholder="e.g. M' Chrissna"
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Restock Notes / Remarks
+              </label>
+              <input
+                type="text"
+                value={restockNote}
+                onChange={(e) => setRestockNote(e.target.value)}
+                placeholder="e.g. Delivered batch for Q3 replenishment"
+                className="w-full px-3 py-2 text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end space-x-3 pt-4 border-t border-slate-200">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-sm font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                id="btn-confirm-restock"
+                className="px-5 py-2 text-sm font-semibold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm transition-colors flex items-center space-x-2 cursor-pointer"
+              >
+                <ArrowUpRight className="w-4 h-4" />
+                <span>Inflow / Add to Inventory Stock</span>
+              </button>
+            </div>
+          </form>
         )}
       </div>
     </div>

@@ -61,18 +61,32 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
 
   if (!isOpen || !project) return null;
 
-  const pId = project.id.toLowerCase();
-  const pName = project.name.toLowerCase();
+  const pId = (project.id || '').trim().toLowerCase();
+  const pName = (project.name || '').trim().toLowerCase();
 
-  // Filter Pull-Out tickets for this project
-  const projectPullOuts = pullOutTickets.filter(
-    (t) => t.projectId.toLowerCase() === pId || t.projectName.toLowerCase() === pName
-  );
+  // Filter Pull-Out tickets for this project (matching ID, Name, or cross-matching)
+  const projectPullOuts = pullOutTickets.filter((t) => {
+    const tId = (t.projectId || '').trim().toLowerCase();
+    const tName = (t.projectName || '').trim().toLowerCase();
+    return (
+      (tId && tId === pId) ||
+      (tName && tName === pName) ||
+      (tId && tId === pName) ||
+      (tName && tName === pId)
+    );
+  });
 
   // Filter Deployment tickets for this project
-  const projectDeployments = deploymentTickets.filter(
-    (t) => t.projectId.toLowerCase() === pId || t.projectName.toLowerCase() === pName
-  );
+  const projectDeployments = deploymentTickets.filter((t) => {
+    const tId = (t.projectId || '').trim().toLowerCase();
+    const tName = (t.projectName || '').trim().toLowerCase();
+    return (
+      (tId && tId === pId) ||
+      (tName && tName === pName) ||
+      (tId && tId === pName) ||
+      (tName && tName === pId)
+    );
+  });
 
   // Flatten material items
   interface FlatMaterialItem {
@@ -98,7 +112,10 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
       let price = item.unitPrice || 0;
       if (price === 0 && inventoryItems.length > 0) {
         const invItem = inventoryItems.find(
-          (i) => i.id === item.itemId || i.assetId === item.assetId
+          (i) =>
+            (item.itemId && i.id.toLowerCase() === item.itemId.toLowerCase()) ||
+            (item.assetId && i.assetId.toLowerCase() === item.assetId.toLowerCase()) ||
+            (item.description && i.description.toLowerCase() === item.description.toLowerCase())
         );
         if (invItem && invItem.unitPrice) {
           price = invItem.unitPrice;
@@ -123,6 +140,43 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
       });
     });
   });
+
+  // Fallback: If no pull-out tickets were found, check inventoryItems' projectAllocations
+  if (flatMaterials.length === 0 && inventoryItems.length > 0) {
+    inventoryItems.forEach((invItem) => {
+      if (invItem.projectAllocations) {
+        invItem.projectAllocations.forEach((alloc) => {
+          const aId = (alloc.projectId || '').trim().toLowerCase();
+          const aName = (alloc.projectName || '').trim().toLowerCase();
+          if (
+            (aId && aId === pId) ||
+            (aName && aName === pName) ||
+            (aId && aId === pName) ||
+            (aName && aName === pId)
+          ) {
+            const price = invItem.unitPrice || 0;
+            const lineCost = alloc.quantity * price;
+            totalMaterialCost += lineCost;
+            totalMaterialUnits += alloc.quantity;
+
+            flatMaterials.push({
+              ticketId: 'ALLOC-DIRECT',
+              ticketDate: alloc.allocatedDate || 'Recorded',
+              requestedBy: alloc.leadPerson || project.leadPerson || 'Project Staff',
+              itemId: invItem.id,
+              assetId: invItem.assetId,
+              description: invItem.description,
+              category: invItem.category,
+              quantity: alloc.quantity,
+              unit: invItem.unit,
+              unitPrice: price,
+              totalCost: lineCost,
+            });
+          }
+        });
+      }
+    });
+  }
 
   // Calculate manpower stats
   let totalLaborCost = 0;

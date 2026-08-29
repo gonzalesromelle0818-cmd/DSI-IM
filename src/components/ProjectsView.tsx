@@ -19,6 +19,11 @@ import {
   FileDown,
   ChevronRight,
   TrendingUp,
+  Lock,
+  Eye,
+  EyeOff,
+  ShieldAlert,
+  X,
 } from 'lucide-react';
 import { Project, InventoryItem, PullOutTicket, DeploymentTicket } from '../types';
 import { formatCurrency } from '../utils/inventoryHelpers';
@@ -38,6 +43,8 @@ interface ProjectsViewProps {
   onOpenAddDeploymentForProject?: (projectId: string) => void;
 }
 
+const REQUIRED_DELETE_PASSWORD = 'aerith0818';
+
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
   projects,
   items,
@@ -54,15 +61,28 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Planning' | 'Completed' | 'On Hold'>('all');
   const [selectedProjectForDetails, setSelectedProjectForDetails] = useState<Project | null>(null);
 
+  // Card single project delete with password confirmation
+  const [projectToSecureDelete, setProjectToSecureDelete] = useState<Project | null>(null);
+  const [cardPasswordInput, setCardPasswordInput] = useState('');
+  const [cardPasswordError, setCardPasswordError] = useState('');
+  const [showCardPassword, setShowCardPassword] = useState(false);
+
   // Calculate items deployed per project and total material expenses (from pullOutTickets & allocations)
   const getProjectComprehensiveMetrics = (projectId: string, projectName: string) => {
-    const pId = projectId.toLowerCase();
-    const pName = projectName.toLowerCase();
+    const pId = (projectId || '').trim().toLowerCase();
+    const pName = (projectName || '').trim().toLowerCase();
 
-    // 1. Pull Out Materials
-    const relatedPullOuts = pullOutTickets.filter(
-      (t) => t.projectId.toLowerCase() === pId || t.projectName.toLowerCase() === pName
-    );
+    // 1. Pull Out Materials - match by projectId or projectName robustly
+    const relatedPullOuts = pullOutTickets.filter((t) => {
+      const tId = (t.projectId || '').trim().toLowerCase();
+      const tName = (t.projectName || '').trim().toLowerCase();
+      return (
+        (tId && tId === pId) ||
+        (tName && tName === pName) ||
+        (tId && tId === pName) ||
+        (tName && tName === pId)
+      );
+    });
 
     let materialCost = 0;
     let materialUnits = 0;
@@ -71,7 +91,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       ticket.items.forEach((item) => {
         let price = item.unitPrice || 0;
         if (price === 0 && items.length > 0) {
-          const invItem = items.find((i) => i.id === item.itemId || i.assetId === item.assetId);
+          const invItem = items.find(
+            (i) =>
+              (item.itemId && i.id.toLowerCase() === item.itemId.toLowerCase()) ||
+              (item.assetId && i.assetId.toLowerCase() === item.assetId.toLowerCase()) ||
+              (item.description && i.description.toLowerCase() === item.description.toLowerCase())
+          );
           if (invItem && invItem.unitPrice) {
             price = invItem.unitPrice;
           }
@@ -86,7 +111,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       items.forEach((item) => {
         if (item.projectAllocations) {
           item.projectAllocations.forEach((alloc) => {
-            if (alloc.projectId.toLowerCase() === pId) {
+            const aId = (alloc.projectId || '').trim().toLowerCase();
+            const aName = (alloc.projectName || '').trim().toLowerCase();
+            if (
+              (aId && aId === pId) ||
+              (aName && aName === pName) ||
+              (aId && aId === pName) ||
+              (aName && aName === pId)
+            ) {
               materialUnits += alloc.quantity;
               if (item.unitPrice) {
                 materialCost += alloc.quantity * item.unitPrice;
@@ -98,9 +130,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     }
 
     // 2. Deployment Manpower & Mobilization
-    const relatedDeployments = deploymentTickets.filter(
-      (t) => t.projectId.toLowerCase() === pId || t.projectName.toLowerCase() === pName
-    );
+    const relatedDeployments = deploymentTickets.filter((t) => {
+      const tId = (t.projectId || '').trim().toLowerCase();
+      const tName = (t.projectName || '').trim().toLowerCase();
+      return (
+        (tId && tId === pId) ||
+        (tName && tName === pName) ||
+        (tId && tId === pName) ||
+        (tName && tName === pId)
+      );
+    });
 
     let laborCost = 0;
     let mobilizationCost = 0;
@@ -127,6 +166,29 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       deploymentsCount: relatedDeployments.length,
       grandTotalCost,
     };
+  };
+
+  const handleOpenSecureDelete = (e: React.MouseEvent, project: Project) => {
+    e.stopPropagation();
+    setProjectToSecureDelete(project);
+    setCardPasswordInput('');
+    setCardPasswordError('');
+    setShowCardPassword(false);
+  };
+
+  const handleConfirmSecureDelete = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (cardPasswordInput !== REQUIRED_DELETE_PASSWORD) {
+      setCardPasswordError('Maling password! Ilagay ang tamang security password para ma-delete ang project.');
+      return;
+    }
+
+    if (projectToSecureDelete) {
+      onDeleteProject(projectToSecureDelete.id);
+      setProjectToSecureDelete(null);
+      setCardPasswordInput('');
+      setCardPasswordError('');
+    }
   };
 
   const filteredProjects = projects.filter((project) => {
@@ -457,14 +519,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       <ArrowRight className="w-3.5 h-3.5" />
                     </span>
 
-                    {/* Delete Project */}
+                    {/* Delete Project with Password Authorization */}
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteProject(project.id);
-                      }}
+                      onClick={(e) => handleOpenSecureDelete(e, project)}
                       className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                      title="Delete project"
+                      title="Delete project (Requires Password)"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
@@ -487,6 +546,108 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         onOpenAddPullOutForProject={onOpenAddPullOutForProject}
         onOpenAddDeploymentForProject={onOpenAddDeploymentForProject}
       />
+
+      {/* Direct Card Delete with Password Confirmation Modal */}
+      {projectToSecureDelete && (
+        <div
+          id="secure-delete-project-modal-backdrop"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setProjectToSecureDelete(null);
+            }
+          }}
+        >
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="bg-slate-900 px-5 py-4 text-white flex items-center justify-between">
+              <div className="flex items-center space-x-2.5">
+                <div className="p-2 rounded-lg bg-rose-500/20 text-rose-400 border border-rose-500/30">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold">Delete Project Record</h3>
+                  <p className="text-xs text-slate-400">Admin Security Password Required</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setProjectToSecureDelete(null)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <form onSubmit={handleConfirmSecureDelete} className="p-5 space-y-4">
+              <div className="p-3 bg-rose-50/80 border border-rose-200 rounded-xl space-y-1">
+                <div className="flex items-center space-x-2">
+                  <span className="font-mono text-[11px] font-bold text-rose-700 bg-rose-100 px-2 py-0.5 rounded">
+                    {projectToSecureDelete.id}
+                  </span>
+                  <span className="font-bold text-xs text-rose-950 truncate">
+                    {projectToSecureDelete.name}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600">
+                  Sigurado ka ba na gusto mong burahin ang project na ito? Hindi na ito mababawi kapag nabura.
+                </p>
+              </div>
+
+              {/* Password Input */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center space-x-1">
+                  <Lock className="w-3.5 h-3.5 text-rose-600" />
+                  <span>Ilagay ang Password</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type={showCardPassword ? 'text' : 'password'}
+                    value={cardPasswordInput}
+                    onChange={(e) => {
+                      setCardPasswordInput(e.target.value);
+                      if (cardPasswordError) setCardPasswordError('');
+                    }}
+                    placeholder="Enter password..."
+                    autoFocus
+                    className={`w-full pl-3 pr-10 py-2 text-xs bg-slate-50 border rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500 font-mono ${
+                      cardPasswordError ? 'border-red-500 bg-red-50/40' : 'border-slate-300'
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowCardPassword(!showCardPassword)}
+                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600"
+                  >
+                    {showCardPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                {cardPasswordError && (
+                  <p className="text-xs text-red-600 font-semibold">{cardPasswordError}</p>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setProjectToSecureDelete(null)}
+                  className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Confirm Delete</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -29,25 +29,6 @@ import { RemovePullOutModal } from './components/RemovePullOutModal';
 import { AddDeploymentModal } from './components/AddDeploymentModal';
 import { RemoveDeploymentModal } from './components/RemoveDeploymentModal';
 import { ManageManpowerModal } from './components/ManageManpowerModal';
-import {
-  subscribeToInventory,
-  subscribeToProjects,
-  subscribeToPullOuts,
-  subscribeToDeployments,
-  subscribeToPurchases,
-  subscribeToManpowerRates,
-  saveInventoryItemCloud,
-  deleteInventoryItemCloud,
-  saveProjectCloud,
-  deleteProjectCloud,
-  savePullOutCloud,
-  deletePullOutCloud,
-  saveDeploymentCloud,
-  deleteDeploymentCloud,
-  savePurchaseCloud,
-  deletePurchaseCloud,
-  saveManpowerRateCloud,
-} from './firebase';
 
 const STORAGE_KEY = 'dsi_inventory_data_v2_user';
 const PROJECTS_STORAGE_KEY = 'dsi_inventory_projects_v1';
@@ -55,6 +36,57 @@ const PULLOUT_STORAGE_KEY = 'dsi_inventory_pullouts_v1';
 const DEPLOYMENT_STORAGE_KEY = 'dsi_inventory_deployment_v1';
 const MANPOWER_RATES_STORAGE_KEY = 'dsi_inventory_manpower_rates_v1';
 const PURCHASES_STORAGE_KEY = 'dsi_inventory_purchases_v1';
+
+const INITIAL_PURCHASES: PurchaseRecord[] = [
+  {
+    id: 'PO-REC-2026-001',
+    poNumber: 'PO-2026-101',
+    date: '2026-08-20',
+    itemId: 'item-1',
+    assetId: 'DSI-EQ-001',
+    description: 'Rotary Hammer Drill',
+    category: 'Power Tools',
+    quantity: 10,
+    unit: 'pcs',
+    unitPrice: 4500,
+    totalCost: 45000,
+    supplier: 'Bosch Official Distributor PH',
+    receivedBy: "M' Chrissna",
+    notes: 'Initial Q3 delivery batch',
+  },
+  {
+    id: 'PO-REC-2026-002',
+    poNumber: 'PO-2026-102',
+    date: '2026-08-22',
+    itemId: 'item-5',
+    assetId: 'DSI-MAT-005',
+    description: 'Expansion Bolt 1/2 x 4',
+    category: 'Screw/Bolt',
+    quantity: 200,
+    unit: 'pcs',
+    unitPrice: 45,
+    totalCost: 9000,
+    supplier: 'Manila Fasteners Depot',
+    receivedBy: "M' Chrissna",
+    notes: 'Warehouse restock replenishment',
+  },
+  {
+    id: 'PO-REC-2026-003',
+    poNumber: 'PO-2026-103',
+    date: '2026-08-25',
+    itemId: 'item-8',
+    assetId: 'DSI-CON-008',
+    description: 'N95 Respirator Masks',
+    category: 'Consumables',
+    quantity: 150,
+    unit: 'pcs',
+    unitPrice: 35,
+    totalCost: 5250,
+    supplier: 'Safety First Industrial Supplies',
+    receivedBy: "M' Chrissna",
+    notes: 'Safety PPE replenish',
+  },
+];
 
 export default function App() {
   const [currentTab, setCurrentTab] = useState<TabType>('inventory');
@@ -70,19 +102,6 @@ export default function App() {
       console.error('Failed to parse saved inventory', e);
     }
     return INITIAL_INVENTORY;
-  });
-
-  // Purchases / Stock Inflow logs state
-  const [purchases, setPurchases] = useState<PurchaseRecord[]>(() => {
-    try {
-      const saved = localStorage.getItem(PURCHASES_STORAGE_KEY);
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {
-      console.error('Failed to parse saved purchases', e);
-    }
-    return [];
   });
 
   // Projects state (starts clean)
@@ -137,45 +156,18 @@ export default function App() {
     return DEFAULT_MANPOWER_RATES;
   });
 
-  // Real-time Cloud Firestore Subscriptions (Live shared database across all devices and users)
-  useEffect(() => {
-    const unsubInventory = subscribeToInventory((cloudItems) => {
-      if (cloudItems && cloudItems.length > 0) {
-        setItems(cloudItems);
+  // Purchases & Stock Inflow Records state
+  const [purchases, setPurchases] = useState<PurchaseRecord[]>(() => {
+    try {
+      const saved = localStorage.getItem(PURCHASES_STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
       }
-    });
-
-    const unsubProjects = subscribeToProjects((cloudProjects) => {
-      setProjects(cloudProjects);
-    });
-
-    const unsubPullOuts = subscribeToPullOuts((cloudTickets) => {
-      setPullOutTickets(cloudTickets);
-    });
-
-    const unsubDeployments = subscribeToDeployments((cloudDeployments) => {
-      setDeploymentTickets(cloudDeployments);
-    });
-
-    const unsubPurchases = subscribeToPurchases((cloudPurchases) => {
-      setPurchases(cloudPurchases);
-    });
-
-    const unsubRates = subscribeToManpowerRates((cloudRates) => {
-      if (cloudRates && cloudRates.length > 0) {
-        setManpowerRates(cloudRates);
-      }
-    });
-
-    return () => {
-      unsubInventory();
-      unsubProjects();
-      unsubPullOuts();
-      unsubDeployments();
-      unsubPurchases();
-      unsubRates();
-    };
-  }, []);
+    } catch (e) {
+      console.error('Failed to parse saved purchases', e);
+    }
+    return INITIAL_PURCHASES;
+  });
 
   // Save to localStorage on change
   useEffect(() => {
@@ -185,14 +177,6 @@ export default function App() {
       console.error('Failed to save inventory', e);
     }
   }, [items]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(PURCHASES_STORAGE_KEY, JSON.stringify(purchases));
-    } catch (e) {
-      console.error('Failed to save purchases', e);
-    }
-  }, [purchases]);
 
   useEffect(() => {
     try {
@@ -226,6 +210,14 @@ export default function App() {
     }
   }, [manpowerRates]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(PURCHASES_STORAGE_KEY, JSON.stringify(purchases));
+    } catch (e) {
+      console.error('Failed to save purchases', e);
+    }
+  }, [purchases]);
+
   // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
@@ -237,6 +229,7 @@ export default function App() {
   const [isRemoveDeploymentModalOpen, setIsRemoveDeploymentModalOpen] = useState(false);
   const [isManageRatesModalOpen, setIsManageRatesModalOpen] = useState(false);
   const [preselectedRestockItemId, setPreselectedRestockItemId] = useState<string | null>(null);
+  const [preselectedPullOutProjectId, setPreselectedPullOutProjectId] = useState<string | null>(null);
 
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [detailsItem, setDetailsItem] = useState<InventoryItem | null>(null);
@@ -253,89 +246,287 @@ export default function App() {
   // Inventory Handlers
   const handleAddItem = (newItem: InventoryItem) => {
     setItems((prev) => [newItem, ...prev]);
-    saveInventoryItemCloud(newItem).catch((e) => console.error('Cloud save item error:', e));
+
+    // Also register an initial stock purchase inflow record if stockQty > 0
+    if (newItem.stockQty > 0) {
+      const initialRecord: PurchaseRecord = {
+        id: 'pur-' + Date.now(),
+        poNumber: `NEW-${newItem.assetId}`,
+        date: new Date().toISOString().slice(0, 10),
+        itemId: newItem.id,
+        assetId: newItem.assetId,
+        description: newItem.description,
+        category: newItem.category,
+        quantity: newItem.stockQty,
+        unit: newItem.unit,
+        unitPrice: newItem.unitPrice,
+        totalCost: newItem.unitPrice ? newItem.stockQty * newItem.unitPrice : undefined,
+        supplier: 'New Asset Initial Stock',
+        receivedBy: "M' Chrissna",
+        notes: newItem.notes || 'Catalog Registration Inflow',
+      };
+      setPurchases((prev) => [initialRecord, ...prev]);
+    }
+  };
+
+  // Restock / Add Stock Handler (Inflow to Inventory)
+  const handleRestockItem = (
+    itemId: string,
+    additionalQty: number,
+    notes?: string,
+    newUnitPrice?: number,
+    poNumber?: string,
+    supplier?: string,
+    receivedBy?: string
+  ) => {
+    if (additionalQty <= 0) return;
+
+    let targetItem: InventoryItem | undefined;
+
+    // 1. Inflow into Inventory state
+    setItems((prev) =>
+      prev.map((item) => {
+        const match =
+          item.id === itemId ||
+          item.assetId.trim().toLowerCase() === itemId.trim().toLowerCase();
+
+        if (match) {
+          targetItem = item;
+          const updatedQty = item.stockQty + additionalQty;
+          return {
+            ...item,
+            stockQty: updatedQty,
+            unitPrice: newUnitPrice !== undefined ? newUnitPrice : item.unitPrice,
+            lastUpdated: new Date().toISOString().slice(0, 10),
+            notes: notes
+              ? `${item.notes ? item.notes + ' | ' : ''}Restock +${additionalQty} ${item.unit}: ${notes}`
+              : item.notes,
+          };
+        }
+        return item;
+      })
+    );
+
+    // 2. Automatically log the purchase inflow record
+    const matchingItem =
+      targetItem ||
+      items.find(
+        (i) => i.id === itemId || i.assetId.toLowerCase() === itemId.toLowerCase()
+      );
+
+    if (matchingItem) {
+      const effectivePrice =
+        newUnitPrice !== undefined ? newUnitPrice : matchingItem.unitPrice;
+      const newPurchaseRecord: PurchaseRecord = {
+        id: 'pur-' + Date.now(),
+        poNumber:
+          poNumber ||
+          `PO-${new Date().getFullYear()}-${Math.floor(100 + Math.random() * 900)}`,
+        date: new Date().toISOString().slice(0, 10),
+        itemId: matchingItem.id,
+        assetId: matchingItem.assetId,
+        description: matchingItem.description,
+        category: matchingItem.category,
+        quantity: additionalQty,
+        unit: matchingItem.unit,
+        unitPrice: effectivePrice,
+        totalCost: effectivePrice ? additionalQty * effectivePrice : undefined,
+        supplier: supplier || 'DSI Authorized Supplier',
+        receivedBy: receivedBy || "M' Chrissna",
+        notes: notes || 'Warehouse Stock Replenishment',
+      };
+
+      setPurchases((prev) => [newPurchaseRecord, ...prev]);
+    }
+  };
+
+  // Direct purchase from Purchases View
+  const handleAddDirectPurchase = (
+    itemId: string,
+    quantity: number,
+    unitPrice?: number,
+    poNumber?: string,
+    supplier?: string,
+    receivedBy?: string,
+    notes?: string
+  ) => {
+    handleRestockItem(
+      itemId,
+      quantity,
+      notes,
+      unitPrice,
+      poNumber,
+      supplier,
+      receivedBy
+    );
+  };
+
+  // Delete purchase record (with optional rollback)
+  const handleDeletePurchaseRecord = (purchaseId: string, rollbackStock: boolean) => {
+    const purchase = purchases.find((p) => p.id === purchaseId);
+    if (!purchase) return;
+
+    if (rollbackStock) {
+      setItems((prev) =>
+        prev.map((item) => {
+          const match =
+            item.id === purchase.itemId ||
+            item.assetId.toLowerCase() === purchase.assetId.toLowerCase();
+          if (match) {
+            const newQty = Math.max(0, item.stockQty - purchase.quantity);
+            return {
+              ...item,
+              stockQty: newQty,
+              lastUpdated: new Date().toISOString().slice(0, 10),
+              notes: `${item.notes ? item.notes + ' | ' : ''}Rollback inflow ${purchase.poNumber || purchase.id}, -${purchase.quantity} ${item.unit}`,
+            };
+          }
+          return item;
+        })
+      );
+    }
+
+    setPurchases((prev) => prev.filter((p) => p.id !== purchaseId));
   };
 
   // Project Handlers
   const handleAddProject = (newProject: Project) => {
     setProjects((prev) => [newProject, ...prev]);
-    saveProjectCloud(newProject).catch((e) => console.error('Cloud save project error:', e));
   };
 
   const handleDeleteProject = (projectId: string) => {
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
-    deleteProjectCloud(projectId).catch((e) => console.error('Cloud delete project error:', e));
   };
 
   const handleDeleteMultipleProjects = (projectIds: string[]) => {
     const set = new Set(projectIds);
     setProjects((prev) => prev.filter((p) => !set.has(p.id)));
-    projectIds.forEach((id) => deleteProjectCloud(id).catch((e) => console.error(e)));
   };
 
   // Deployment Handlers
   const handleAddDeployment = (newTicket: DeploymentTicket) => {
+    // 1. Add ticket to records
     setDeploymentTickets((prev) => [newTicket, ...prev]);
-    saveDeploymentCloud(newTicket).catch((e) => console.error('Cloud save deployment error:', e));
+
+    // 2. Auto-register project in masterlist if not already present
+    if (newTicket.projectName) {
+      setProjects((prevProjects) => {
+        const pId = (newTicket.projectId || '').trim().toLowerCase();
+        const pName = (newTicket.projectName || '').trim().toLowerCase();
+        const exists = prevProjects.some(
+          (p) =>
+            (p.id && p.id.trim().toLowerCase() === pId) ||
+            (p.name && p.name.trim().toLowerCase() === pName)
+        );
+        if (!exists) {
+          const newProj: Project = {
+            id: newTicket.projectId || `PRJ-${String(prevProjects.length + 1).padStart(3, '0')}`,
+            name: newTicket.projectName,
+            location: newTicket.projectLocation || 'Site Location',
+            leadPerson: newTicket.supervisor || newTicket.preparedBy || 'Site In-Charge',
+            status: 'Active',
+            createdAt: newTicket.deploymentDate || new Date().toISOString().slice(0, 10),
+          };
+          return [newProj, ...prevProjects];
+        }
+        return prevProjects;
+      });
+    }
   };
 
   const handleDeleteDeployment = (ticketId: string) => {
     setDeploymentTickets((prev) => prev.filter((t) => t.id !== ticketId));
-    deleteDeploymentCloud(ticketId).catch((e) => console.error('Cloud delete deployment error:', e));
   };
 
   const handleDeleteMultipleDeployments = (ticketIds: string[]) => {
     const set = new Set(ticketIds);
     setDeploymentTickets((prev) => prev.filter((t) => !set.has(t.id)));
-    ticketIds.forEach((id) => deleteDeploymentCloud(id).catch((e) => console.error(e)));
   };
 
   const handleUpdateDeploymentStatus = (
     ticketId: string,
     status: DeploymentTicket['status']
   ) => {
-    let updatedTicket: DeploymentTicket | undefined;
     setDeploymentTickets((prev) =>
-      prev.map((t) => {
-        if (t.id === ticketId) {
-          updatedTicket = { ...t, status };
-          return updatedTicket;
-        }
-        return t;
-      })
+      prev.map((t) => (t.id === ticketId ? { ...t, status } : t))
     );
-    if (updatedTicket) {
-      saveDeploymentCloud(updatedTicket).catch((e) => console.error('Cloud update deployment error:', e));
-    }
   };
 
   const handleSaveManpowerRates = (newRates: ManpowerPositionRate[]) => {
     setManpowerRates(newRates);
-    newRates.forEach((rate) => {
-      saveManpowerRateCloud(rate).catch((e) => console.error('Cloud save rate error:', e));
-    });
   };
 
   // Pull Out Handlers
   const handleAddPullOut = (ticket: PullOutTicket) => {
-    // 1. Add ticket to records & save to cloud
+    // 1. Add ticket to records
     setPullOutTickets((prev) => [ticket, ...prev]);
-    savePullOutCloud(ticket).catch((e) => console.error('Cloud save pullout error:', e));
 
-    // 2. Deduct quantities from warehouse stock and record project allocations
+    // 2. Auto-register project in masterlist if not already present
+    if (ticket.projectName) {
+      setProjects((prevProjects) => {
+        const pId = (ticket.projectId || '').trim().toLowerCase();
+        const pName = (ticket.projectName || '').trim().toLowerCase();
+        const exists = prevProjects.some(
+          (p) =>
+            (p.id && p.id.trim().toLowerCase() === pId) ||
+            (p.name && p.name.trim().toLowerCase() === pName)
+        );
+        if (!exists) {
+          const newProj: Project = {
+            id: ticket.projectId || `PRJ-${String(prevProjects.length + 1).padStart(3, '0')}`,
+            name: ticket.projectName,
+            location: ticket.projectLocation || 'Site Location',
+            leadPerson: ticket.requestedBy || 'Project In-Charge',
+            status: 'Active',
+            createdAt: ticket.date || new Date().toISOString().slice(0, 10),
+          };
+          return [newProj, ...prevProjects];
+        }
+        return prevProjects;
+      });
+    }
+
+    // 3. Deduct quantities from warehouse stock and record project allocations
     setItems((prevItems) => {
-      const lineMap = new Map<string, number>();
+      // Build lookup maps by ID and Asset ID
+      const deductMap = new Map<string, number>();
       ticket.items.forEach((line) => {
-        lineMap.set(line.itemId, (lineMap.get(line.itemId) || 0) + line.quantity);
+        if (line.itemId) {
+          deductMap.set(line.itemId.trim().toLowerCase(), (deductMap.get(line.itemId.trim().toLowerCase()) || 0) + line.quantity);
+        }
+        if (line.assetId) {
+          deductMap.set(line.assetId.trim().toLowerCase(), (deductMap.get(line.assetId.trim().toLowerCase()) || 0) + line.quantity);
+        }
       });
 
       return prevItems.map((item) => {
-        if (lineMap.has(item.id)) {
-          const qtyToDeduct = lineMap.get(item.id)!;
+        const itemIdKey = (item.id || '').trim().toLowerCase();
+        const assetIdKey = (item.assetId || '').trim().toLowerCase();
+
+        let qtyToDeduct = 0;
+        if (itemIdKey && deductMap.has(itemIdKey)) {
+          qtyToDeduct = deductMap.get(itemIdKey)!;
+        } else if (assetIdKey && deductMap.has(assetIdKey)) {
+          qtyToDeduct = deductMap.get(assetIdKey)!;
+        }
+
+        if (qtyToDeduct > 0) {
           const newStock = Math.max(0, item.stockQty - qtyToDeduct);
 
           let allocations = [...(item.projectAllocations || [])];
-          const existingAllocIndex = allocations.findIndex((a) => a.projectId === ticket.projectId);
+          const ticketPId = (ticket.projectId || '').trim().toLowerCase();
+          const ticketPName = (ticket.projectName || '').trim().toLowerCase();
+
+          const existingAllocIndex = allocations.findIndex((a) => {
+            const aId = (a.projectId || '').trim().toLowerCase();
+            const aName = (a.projectName || '').trim().toLowerCase();
+            return (
+              (aId && aId === ticketPId) ||
+              (aName && aName === ticketPName) ||
+              (aId && aId === ticketPName) ||
+              (aName && aName === ticketPId)
+            );
+          });
 
           if (existingAllocIndex >= 0) {
             allocations[existingAllocIndex] = {
@@ -356,16 +547,13 @@ export default function App() {
             });
           }
 
-          const updatedItem = {
+          return {
             ...item,
             stockQty: newStock,
             projectAllocations: allocations,
             lastUpdated: new Date().toISOString().slice(0, 10),
             notes: `${item.notes ? item.notes + ' | ' : ''}Pull out ${qtyToDeduct} ${item.unit} to ${ticket.projectName} (${ticket.id})`,
           };
-
-          saveInventoryItemCloud(updatedItem).catch((e) => console.error('Cloud update item stock error:', e));
-          return updatedItem;
         }
         return item;
       });
@@ -400,16 +588,13 @@ export default function App() {
               })
               .filter((alloc) => alloc.quantity > 0);
 
-            const updatedItem = {
+            return {
               ...item,
               stockQty: newStock,
               projectAllocations: allocations,
               lastUpdated: new Date().toISOString().slice(0, 10),
               notes: `${item.notes ? item.notes + ' | ' : ''}Canceled pull out ${ticket.id}, restored +${qtyToReturn} ${item.unit}`,
             };
-
-            saveInventoryItemCloud(updatedItem).catch((e) => console.error('Cloud restore item stock error:', e));
-            return updatedItem;
           }
           return item;
         });
@@ -417,100 +602,10 @@ export default function App() {
     }
 
     setPullOutTickets((prev) => prev.filter((t) => t.id !== ticketId));
-    deletePullOutCloud(ticketId).catch((e) => console.error('Cloud delete pullout error:', e));
   };
 
   const handleDeleteMultiplePullOuts = (ticketIds: string[], returnStock: boolean) => {
     ticketIds.forEach((id) => handleDeletePullOut(id, returnStock));
-  };
-
-  const handleRestockItem = (
-    itemId: string,
-    additionalQty: number,
-    notes?: string,
-    unitPrice?: number,
-    supplier?: string,
-    poNumber?: string
-  ) => {
-    let affectedItem: InventoryItem | undefined;
-
-    setItems((prev) =>
-      prev.map((item) => {
-        if (item.id === itemId) {
-          const updatedQty = item.stockQty + additionalQty;
-          const newUnitPrice = unitPrice !== undefined && unitPrice > 0 ? unitPrice : item.unitPrice;
-          affectedItem = {
-            ...item,
-            stockQty: updatedQty,
-            unitPrice: newUnitPrice,
-            lastUpdated: new Date().toISOString().slice(0, 10),
-            notes: notes
-              ? `${item.notes ? item.notes + ' | ' : ''}Restock +${additionalQty} ${item.unit}: ${notes}`
-              : item.notes,
-          };
-          return affectedItem;
-        }
-        return item;
-      })
-    );
-
-    // Create purchase / stock inflow record
-    const targetItem = affectedItem || items.find((i) => i.id === itemId);
-    if (targetItem) {
-      if (affectedItem) {
-        saveInventoryItemCloud(affectedItem).catch((e) => console.error('Cloud restock item error:', e));
-      }
-
-      const priceVal = unitPrice !== undefined && unitPrice > 0 ? unitPrice : targetItem.unitPrice;
-      const newPurchase: PurchaseRecord = {
-        id: 'PUR-' + Date.now(),
-        poNumber:
-          poNumber?.trim() ||
-          `PO-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`,
-        itemId: targetItem.id,
-        assetId: targetItem.assetId,
-        description: targetItem.description,
-        category: targetItem.category,
-        quantityAdded: additionalQty,
-        unit: targetItem.unit,
-        unitPrice: priceVal,
-        totalCost: priceVal !== undefined ? priceVal * additionalQty : undefined,
-        supplier: supplier?.trim() || (notes ? notes.trim() : 'Warehouse Supplier'),
-        notes: notes?.trim() || undefined,
-        receivedDate: new Date().toISOString().slice(0, 10),
-        receivedBy: 'DSI Admin',
-        createdAt: new Date().toISOString(),
-      };
-      setPurchases((prev) => [newPurchase, ...prev]);
-      savePurchaseCloud(newPurchase).catch((e) => console.error('Cloud save purchase error:', e));
-    }
-  };
-
-  const handleDeletePurchaseRecord = (purchaseId: string, revertStock: boolean) => {
-    const record = purchases.find((p) => p.id === purchaseId);
-    if (!record) return;
-
-    if (revertStock) {
-      setItems((prev) =>
-        prev.map((item) => {
-          if (item.id === record.itemId) {
-            const newStock = Math.max(0, item.stockQty - record.quantityAdded);
-            const updatedItem = {
-              ...item,
-              stockQty: newStock,
-              lastUpdated: new Date().toISOString().slice(0, 10),
-              notes: `${item.notes ? item.notes + ' | ' : ''}Reverted purchase ${record.poNumber} (-${record.quantityAdded} ${item.unit})`,
-            };
-            saveInventoryItemCloud(updatedItem).catch((e) => console.error(e));
-            return updatedItem;
-          }
-          return item;
-        })
-      );
-    }
-
-    setPurchases((prev) => prev.filter((p) => p.id !== purchaseId));
-    deletePurchaseCloud(purchaseId).catch((e) => console.error('Cloud delete purchase error:', e));
   };
 
   const handleReturnStock = (itemId: string, projectId: string, quantityToReturn: number) => {
@@ -534,16 +629,13 @@ export default function App() {
               .filter((alloc) => alloc.quantity > 0);
           }
 
-          const updatedItem = {
+          return {
             ...item,
             stockQty: newStockQty,
             projectAllocations: updatedAllocations,
             lastUpdated: new Date().toISOString().slice(0, 10),
             notes: `${item.notes ? item.notes + ' | ' : ''}Returned ${quantityToReturn} ${item.unit} to warehouse stock`,
           };
-
-          saveInventoryItemCloud(updatedItem).catch((e) => console.error('Cloud return stock error:', e));
-          return updatedItem;
         }
         return item;
       })
@@ -554,18 +646,15 @@ export default function App() {
     setItems((prev) =>
       prev.map((item) => (item.id === updatedItem.id ? updatedItem : item))
     );
-    saveInventoryItemCloud(updatedItem).catch((e) => console.error('Cloud update item error:', e));
   };
 
   const handleDeleteItem = (itemId: string) => {
     setItems((prev) => prev.filter((item) => item.id !== itemId));
-    deleteInventoryItemCloud(itemId).catch((e) => console.error('Cloud delete item error:', e));
   };
 
   const handleDeleteMultiple = (itemIds: string[]) => {
     const set = new Set(itemIds);
     setItems((prev) => prev.filter((item) => !set.has(item.id)));
-    itemIds.forEach((id) => deleteInventoryItemCloud(id).catch((e) => console.error(e)));
   };
 
   const handleDeductStock = (itemId: string, deductQty: number, reason: string) => {
@@ -573,14 +662,12 @@ export default function App() {
       prev.map((item) => {
         if (item.id === itemId) {
           const newStock = Math.max(0, item.stockQty - deductQty);
-          const updatedItem = {
+          return {
             ...item,
             stockQty: newStock,
             lastUpdated: new Date().toISOString().slice(0, 10),
             notes: `${item.notes ? item.notes + ' | ' : ''}Deducted -${deductQty} ${item.unit} (${reason})`,
           };
-          saveInventoryItemCloud(updatedItem).catch((e) => console.error(e));
-          return updatedItem;
         }
         return item;
       })
@@ -588,7 +675,6 @@ export default function App() {
   };
 
   const handleClearAllInventory = () => {
-    items.forEach((item) => deleteInventoryItemCloud(item.id).catch((e) => console.error(e)));
     setItems([]);
     try {
       localStorage.removeItem(STORAGE_KEY);
@@ -694,6 +780,7 @@ export default function App() {
               onDeleteProject={handleDeleteProject}
               onNavigateToInventory={() => setCurrentTab('inventory')}
               onOpenAddPullOutForProject={(pId) => {
+                setPreselectedPullOutProjectId(pId);
                 setIsAddPullOutModalOpen(true);
               }}
               onOpenAddDeploymentForProject={(pId) => {
@@ -707,12 +794,9 @@ export default function App() {
               items={items}
               purchases={purchases}
               onNavigateToInventory={() => setCurrentTab('inventory')}
-              onRestockItem={handleRestockItem}
-              onOpenAddAssetModal={() => {
-                setPreselectedRestockItemId(null);
-                setIsAddModalOpen(true);
-              }}
-              onOpenRestockModal={handleOpenRestockModalFor}
+              onRestockItem={handleOpenRestockModalFor}
+              onOpenAddItemModal={handleOpenAddModal}
+              onAddDirectPurchase={handleAddDirectPurchase}
               onDeletePurchaseRecord={handleDeletePurchaseRecord}
             />
           )}
@@ -764,11 +848,15 @@ export default function App() {
       {/* Add Pull Out Modal */}
       <AddPullOutModal
         isOpen={isAddPullOutModalOpen}
-        onClose={() => setIsAddPullOutModalOpen(false)}
+        onClose={() => {
+          setIsAddPullOutModalOpen(false);
+          setPreselectedPullOutProjectId(null);
+        }}
         projects={projects}
         inventoryItems={items}
         onAddPullOut={handleAddPullOut}
         existingTickets={pullOutTickets}
+        preselectedProjectId={preselectedPullOutProjectId}
         onOpenAddProjectModal={() => {
           setCurrentTab('projects');
           setIsAddProjectModalOpen(true);

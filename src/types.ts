@@ -142,19 +142,18 @@ export interface InventoryStats {
 
 export interface PurchaseRecord {
   id: string; // e.g. "PUR-2026-001"
-  poNumber: string; // e.g. "PO-2026-001" or "DR-1092"
+  poNumber?: string; // e.g. "PO-2026-881" or "DR-1204"
+  date: string; // YYYY-MM-DD
+  supplier?: string;
   itemId: string;
   assetId: string;
   description: string;
   category: ItemCategory;
-  quantityAdded: number;
+  quantity: number; // Added stock quantity
   unit: string;
-  unitPrice?: number;
-  totalCost?: number;
-  supplier?: string;
-  notes?: string;
-  receivedDate: string; // YYYY-MM-DD
+  unitPrice?: number; // Cost per unit in PHP (₱)
+  totalCost?: number; // quantity * unitPrice
   receivedBy?: string;
-  createdAt: string;
+  notes?: string;
+  createdAt?: string;
 }
-
