@@ -23,15 +23,32 @@ import {
   CheckCircle2,
   DollarSign,
   PieChart,
+  CheckSquare,
+  Square,
+  ChevronDown,
+  ChevronRight,
+  LayoutGrid,
+  Trash2,
+  Edit2,
+  Save,
+  AlertCircle,
+  Percent,
 } from 'lucide-react';
 import {
   Project,
   PullOutTicket,
   DeploymentTicket,
   InventoryItem,
+  WindowDoorItem,
+  ProjectMilestone,
 } from '../types';
 import { formatCurrency } from '../utils/inventoryHelpers';
 import { generateProjectCostPDF } from '../utils/generateProjectCostPDF';
+import {
+  calculateProjectProgress,
+  getInitialProjectChecklist,
+  DEFAULT_PROJECT_MILESTONES,
+} from '../utils/projectMilestones';
 
 interface ProjectDetailsModalProps {
   isOpen: boolean;
@@ -42,6 +59,7 @@ interface ProjectDetailsModalProps {
   inventoryItems: InventoryItem[];
   onOpenAddPullOutForProject?: (projectId: string) => void;
   onOpenAddDeploymentForProject?: (projectId: string) => void;
+  onUpdateProject?: (updatedProject: Project) => void;
 }
 
 export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
@@ -53,18 +71,43 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
   inventoryItems,
   onOpenAddPullOutForProject,
   onOpenAddDeploymentForProject,
+  onUpdateProject,
 }) => {
-  const [activeTab, setActiveTab] = useState<'overview' | 'materials' | 'manpower' | 'report'>('overview');
+  const [activeTab, setActiveTab] = useState<'checklist' | 'windows_doors' | 'overview' | 'materials' | 'manpower' | 'report'>('checklist');
   const [materialSearch, setMaterialSearch] = useState('');
   const [materialCategoryFilter, setMaterialCategoryFilter] = useState('all');
   const [deploymentSearch, setDeploymentSearch] = useState('');
+  
+  // Accordion toggle for Milestone #9 Windows/Doors dropdown
+  const [isMilestone9Expanded, setIsMilestone9Expanded] = useState(true);
+
+  // New Window/Door item form inside modal
+  const [showAddWindowModal, setShowAddWindowModal] = useState(false);
+  const [newTag, setNewTag] = useState('');
+  const [newType, setNewType] = useState<'Window' | 'Door' | 'Curtain Wall' | 'Glass Partition' | 'Louvers' | 'Other'>('Window');
+  const [newQty, setNewQty] = useState<number>(1);
+  const [newHeight, setNewHeight] = useState('2100');
+  const [newWidth, setNewWidth] = useState('1800');
+  const [newLocation, setNewLocation] = useState('');
+  const [newRemarks, setNewRemarks] = useState('');
 
   if (!isOpen || !project) return null;
 
   const pId = (project.id || '').trim().toLowerCase();
   const pName = (project.name || '').trim().toLowerCase();
 
-  // Filter Pull-Out tickets for this project (matching ID, Name, or cross-matching)
+  // Ensure project checklist is initialized
+  const checklist: ProjectMilestone[] = getInitialProjectChecklist(project.checklist);
+  const windowsDoors: WindowDoorItem[] = project.windowsDoors || [];
+
+  // Calculate project progress stats
+  const progressStats = calculateProjectProgress({
+    ...project,
+    checklist,
+    windowsDoors,
+  });
+
+  // Filter Pull-Out tickets for this project
   const projectPullOuts = pullOutTickets.filter((t) => {
     const tId = (t.projectId || '').trim().toLowerCase();
     const tName = (t.projectName || '').trim().toLowerCase();
@@ -141,7 +184,7 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
     });
   });
 
-  // Fallback: If no pull-out tickets were found, check inventoryItems' projectAllocations
+  // Fallback: Check item.projectAllocations if no pull-out tickets
   if (flatMaterials.length === 0 && inventoryItems.length > 0) {
     inventoryItems.forEach((invItem) => {
       if (invItem.projectAllocations) {
@@ -198,6 +241,113 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
   const laborPercent = grandTotalCost > 0 ? Math.round((totalLaborCost / grandTotalCost) * 100) : 0;
   const mobPercent = grandTotalCost > 0 ? Math.round((totalMobilizationCost / grandTotalCost) * 100) : 0;
 
+  // Handlers for Checklist Updates
+  const handleToggleMilestone = (milestoneNo: number) => {
+    if (!onUpdateProject) return;
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const updatedChecklist = checklist.map((m) => {
+      if (m.no === milestoneNo) {
+        const nextState = !m.completed;
+        return {
+          ...m,
+          completed: nextState,
+          completedDate: nextState ? m.completedDate || todayStr : undefined,
+        };
+      }
+      return m;
+    });
+
+    onUpdateProject({
+      ...project,
+      checklist: updatedChecklist,
+    });
+  };
+
+  const handleToggleWindowInstalled = (windowDoorId: string) => {
+    if (!onUpdateProject) return;
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const updatedWindows = windowsDoors.map((w) => {
+      if (w.id === windowDoorId) {
+        const nextInstalled = !w.isInstalled;
+        return {
+          ...w,
+          isInstalled: nextInstalled,
+          installedQty: nextInstalled ? w.qty : 0,
+          installedDate: nextInstalled ? todayStr : undefined,
+        };
+      }
+      return w;
+    });
+
+    // Check if all windows are installed to sync milestone #9
+    const allDone = updatedWindows.length > 0 && updatedWindows.every((w) => w.isInstalled);
+    const updatedChecklist = checklist.map((m) => {
+      if (m.no === 9) {
+        return {
+          ...m,
+          completed: allDone,
+          completedDate: allDone ? todayStr : m.completedDate,
+        };
+      }
+      return m;
+    });
+
+    onUpdateProject({
+      ...project,
+      windowsDoors: updatedWindows,
+      checklist: updatedChecklist,
+    });
+  };
+
+  const handleAddWindowDoorSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onUpdateProject) return;
+
+    const count = windowsDoors.length + 1;
+    const tag = newTag.trim() || `${newType === 'Window' ? 'W' : 'D'}-${count}`;
+
+    const newItem: WindowDoorItem = {
+      id: `WD-${Date.now()}-${count}`,
+      tag,
+      type: newType,
+      qty: Math.max(1, newQty || 1),
+      height: newHeight.trim() || '2100',
+      width: newWidth.trim() || (newType === 'Window' ? '1800' : '900'),
+      unit: 'mm',
+      location: newLocation.trim() || undefined,
+      remarks: newRemarks.trim() || undefined,
+      isInstalled: false,
+      installedQty: 0,
+    };
+
+    const updatedWindows = [...windowsDoors, newItem];
+
+    onUpdateProject({
+      ...project,
+      windowsDoors: updatedWindows,
+    });
+
+    // Reset and close
+    setNewTag('');
+    setNewQty(1);
+    setNewHeight('2100');
+    setNewWidth('1800');
+    setNewLocation('');
+    setNewRemarks('');
+    setShowAddWindowModal(false);
+  };
+
+  const handleRemoveWindowDoorItem = (windowDoorId: string) => {
+    if (!onUpdateProject) return;
+    const updatedWindows = windowsDoors.filter((w) => w.id !== windowDoorId);
+    onUpdateProject({
+      ...project,
+      windowsDoors: updatedWindows,
+    });
+  };
+
   // Filter materials
   const filteredMaterials = flatMaterials.filter((m) => {
     const q = materialSearch.toLowerCase();
@@ -235,10 +385,6 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
       supervisor: project.leadPerson,
       projectManager: 'Engr. Roberto Santos',
     });
-  };
-
-  const handlePrint = () => {
-    window.print();
   };
 
   const statusColors = {
@@ -293,6 +439,10 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
                 <User className="w-3.5 h-3.5 text-teal-400" />
                 <span>Lead: <strong>{project.leadPerson || 'Unassigned'}</strong></span>
               </div>
+              <div className="flex items-center gap-1.5 text-teal-300 font-medium">
+                <Percent className="w-3.5 h-3.5" />
+                <span>Completion: <strong className="text-white font-bold">{progressStats.percentage}%</strong></span>
+              </div>
             </div>
           </div>
 
@@ -317,121 +467,562 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
           </div>
         </div>
 
+        {/* Progress & Milestone Overview Banner */}
+        <div className="bg-slate-900/95 text-white px-5 sm:px-6 py-3 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center space-x-3 flex-1">
+            <div className="w-12 h-12 rounded-xl bg-teal-500/20 border border-teal-400/40 flex flex-col items-center justify-center text-teal-300 font-black shrink-0">
+              <span className="text-sm leading-none">{Math.round(progressStats.percentage)}%</span>
+              <span className="text-[9px] uppercase font-bold tracking-wider text-slate-400 mt-0.5">Done</span>
+            </div>
+
+            <div className="flex-1 min-w-[200px]">
+              <div className="flex items-center justify-between text-xs mb-1">
+                <span className="font-semibold text-slate-200">100% Progress Milestone Status</span>
+                <span className="text-teal-400 font-bold">{progressStats.completedMilestonesCount} of {progressStats.totalMilestonesCount} Milestones Done</span>
+              </div>
+              <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                <div
+                  className="h-full bg-gradient-to-r from-teal-500 to-emerald-400 rounded-full transition-all duration-300"
+                  style={{ width: `${progressStats.percentage}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-3 text-xs text-slate-300 shrink-0 border-t sm:border-t-0 sm:border-l border-slate-800 pt-2 sm:pt-0 sm:pl-4">
+            <div>
+              <span className="text-slate-400 block text-[10px] uppercase">Windows & Doors</span>
+              <span className="font-bold text-white">
+                {progressStats.installedWindowsDoorsUnits} / {progressStats.totalWindowsDoorsUnits} Units Installed ({progressStats.installationProgressPercent}%)
+              </span>
+            </div>
+            <div>
+              <span className="text-slate-400 block text-[10px] uppercase">Total Cost</span>
+              <span className="font-bold text-teal-400">{formatCurrency(grandTotalCost)}</span>
+            </div>
+          </div>
+        </div>
+
         {/* Financial Highlights KPI Strip */}
-        <div className="bg-slate-50 border-b border-slate-200 px-5 sm:px-6 py-4 grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-slate-50 border-b border-slate-200 px-5 sm:px-6 py-3.5 grid grid-cols-2 lg:grid-cols-4 gap-3">
           {/* Card 1: Materials Pull Out Cost */}
-          <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
-            <div className="flex items-center justify-between text-slate-500 mb-1">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+            <div className="flex items-center justify-between text-slate-500 mb-0.5">
               <span className="text-[10px] font-bold uppercase tracking-wider">Materials Pulled Out</span>
               <PackageOpen className="w-4 h-4 text-blue-600" />
             </div>
-            <div className="text-base sm:text-lg font-extrabold text-slate-900">
+            <div className="text-base font-extrabold text-slate-900">
               {formatCurrency(totalMaterialCost)}
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">
+            <div className="text-[11px] text-slate-500">
               {totalMaterialUnits} unit(s) • {projectPullOuts.length} ticket(s)
             </div>
           </div>
 
           {/* Card 2: Manpower Labor Cost */}
-          <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
-            <div className="flex items-center justify-between text-slate-500 mb-1">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+            <div className="flex items-center justify-between text-slate-500 mb-0.5">
               <span className="text-[10px] font-bold uppercase tracking-wider">Manpower Labor</span>
               <Users className="w-4 h-4 text-teal-600" />
             </div>
-            <div className="text-base sm:text-lg font-extrabold text-slate-900">
+            <div className="text-base font-extrabold text-slate-900">
               {formatCurrency(totalLaborCost)}
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">
+            <div className="text-[11px] text-slate-500">
               {totalHeadsDeployed} heads deployed
             </div>
           </div>
 
           {/* Card 3: Mobilization Cost */}
-          <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs">
-            <div className="flex items-center justify-between text-slate-500 mb-1">
+          <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
+            <div className="flex items-center justify-between text-slate-500 mb-0.5">
               <span className="text-[10px] font-bold uppercase tracking-wider">Mobilization & Logistics</span>
               <Truck className="w-4 h-4 text-amber-600" />
             </div>
-            <div className="text-base sm:text-lg font-extrabold text-slate-900">
+            <div className="text-base font-extrabold text-slate-900">
               {formatCurrency(totalMobilizationCost)}
             </div>
-            <div className="text-[11px] text-slate-500 mt-0.5">
-              Transpo & fuel expenses
+            <div className="text-[11px] text-slate-500">
+              Transpo & logistics
             </div>
           </div>
 
           {/* Card 4: Grand Total Project Expense */}
-          <div className="bg-emerald-50 p-3.5 rounded-xl border border-emerald-200 shadow-2xs">
-            <div className="flex items-center justify-between text-emerald-700 mb-1">
+          <div className="bg-emerald-50 p-3 rounded-xl border border-emerald-200 shadow-2xs">
+            <div className="flex items-center justify-between text-emerald-700 mb-0.5">
               <span className="text-[10px] font-bold uppercase tracking-wider">Grand Total Expense</span>
               <Banknote className="w-4 h-4 text-emerald-700" />
             </div>
-            <div className="text-base sm:text-lg font-black text-emerald-900">
+            <div className="text-base font-black text-emerald-900">
               {formatCurrency(grandTotalCost)}
             </div>
-            <div className="text-[11px] text-emerald-700 font-semibold mt-0.5">
-              Total site investment
+            <div className="text-[11px] text-emerald-700 font-semibold">
+              Total project cost to date
             </div>
           </div>
         </div>
 
         {/* Navigation Tabs Bar */}
-        <div className="px-5 sm:px-6 pt-3 bg-white border-b border-slate-200 flex items-center justify-between gap-4 overflow-x-auto">
-          <div className="flex items-center space-x-1 sm:space-x-2">
+        <div className="px-5 sm:px-6 pt-2 bg-white border-b border-slate-200 flex items-center justify-between gap-4 overflow-x-auto">
+          <div className="flex items-center space-x-1 sm:space-x-1.5">
             <button
-              onClick={() => setActiveTab('overview')}
-              className={`px-3.5 py-2 text-xs font-bold border-b-2 transition-all flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
-                activeTab === 'overview'
-                  ? 'border-teal-600 text-teal-700 bg-teal-50/50 rounded-t-lg'
+              onClick={() => setActiveTab('checklist')}
+              className={`px-3 py-2 text-xs font-bold border-b-2 transition-all flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
+                activeTab === 'checklist'
+                  ? 'border-teal-600 text-teal-800 bg-teal-50/70 rounded-t-lg'
                   : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <PieChart className="w-4 h-4" />
-              <span>Project Cost Overview</span>
+              <CheckSquare className="w-4 h-4 text-teal-600" />
+              <span>Project Progress Checklist ({progressStats.percentage}%)</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('windows_doors')}
+              className={`px-3 py-2 text-xs font-bold border-b-2 transition-all flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
+                activeTab === 'windows_doors'
+                  ? 'border-blue-600 text-blue-800 bg-blue-50/70 rounded-t-lg'
+                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <LayoutGrid className="w-4 h-4 text-blue-600" />
+              <span>Windows & Doors Schedule ({windowsDoors.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`px-3 py-2 text-xs font-bold border-b-2 transition-all flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
+                activeTab === 'overview'
+                  ? 'border-teal-600 text-teal-800 bg-teal-50/70 rounded-t-lg'
+                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <PieChart className="w-4 h-4 text-teal-600" />
+              <span>Cost Summary</span>
             </button>
 
             <button
               onClick={() => setActiveTab('materials')}
-              className={`px-3.5 py-2 text-xs font-bold border-b-2 transition-all flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
+              className={`px-3 py-2 text-xs font-bold border-b-2 transition-all flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
                 activeTab === 'materials'
-                  ? 'border-blue-600 text-blue-700 bg-blue-50/50 rounded-t-lg'
+                  ? 'border-slate-800 text-slate-900 bg-slate-100 rounded-t-lg'
                   : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <PackageOpen className="w-4 h-4" />
+              <PackageOpen className="w-4 h-4 text-slate-600" />
               <span>Materials Pulled Out ({flatMaterials.length})</span>
             </button>
 
             <button
               onClick={() => setActiveTab('manpower')}
-              className={`px-3.5 py-2 text-xs font-bold border-b-2 transition-all flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
+              className={`px-3 py-2 text-xs font-bold border-b-2 transition-all flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
                 activeTab === 'manpower'
-                  ? 'border-teal-600 text-teal-700 bg-teal-50/50 rounded-t-lg'
+                  ? 'border-slate-800 text-slate-900 bg-slate-100 rounded-t-lg'
                   : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <HardHat className="w-4 h-4" />
+              <HardHat className="w-4 h-4 text-slate-600" />
               <span>Manpower Deployments ({projectDeployments.length})</span>
             </button>
 
             <button
               onClick={() => setActiveTab('report')}
-              className={`px-3.5 py-2 text-xs font-bold border-b-2 transition-all flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
+              className={`px-3 py-2 text-xs font-bold border-b-2 transition-all flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
                 activeTab === 'report'
-                  ? 'border-indigo-600 text-indigo-700 bg-indigo-50/50 rounded-t-lg'
+                  ? 'border-indigo-600 text-indigo-800 bg-indigo-50/70 rounded-t-lg'
                   : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
               }`}
             >
-              <FileText className="w-4 h-4" />
+              <FileText className="w-4 h-4 text-indigo-600" />
               <span>Cost Report & PDF</span>
             </button>
           </div>
         </div>
 
         {/* Tab Content Body */}
-        <div className="p-5 sm:p-6 overflow-y-auto flex-1 bg-slate-50/50 space-y-6">
-          {/* TAB 1: OVERVIEW & COST BREAKDOWN */}
+        <div className="p-5 sm:p-6 overflow-y-auto flex-1 bg-slate-50/50 space-y-5">
+          {/* TAB 1: 14-POINT PROJECT PROGRESS CHECKLIST */}
+          {activeTab === 'checklist' && (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                    <span>Windows & Doors Project — Project Progress Checklist</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Click checkboxes to update milestone completion. Milestone #9 expands into a dropdown checklist with each window and door unit.
+                  </p>
+                </div>
+
+                <div className="flex items-center space-x-2">
+                  <span className="text-xs font-bold px-3 py-1 bg-teal-50 text-teal-800 border border-teal-200 rounded-lg">
+                    Total Progress: {progressStats.percentage}% / 100%
+                  </span>
+                </div>
+              </div>
+
+              {/* Checklist Table (Exact format as uploaded image) */}
+              <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-900 text-white uppercase tracking-wider font-semibold">
+                        <th className="py-3 px-4 w-14 text-center">No.</th>
+                        <th className="py-3 px-4 min-w-[280px]">Activity / Milestone</th>
+                        <th className="py-3 px-4 w-28 text-center">Weight</th>
+                        <th className="py-3 px-4 w-28 text-center">Earned %</th>
+                        <th className="py-3 px-4 w-24 text-center">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium text-slate-800">
+                      {progressStats.milestoneScores.map((m) => {
+                        const isM9 = m.no === 9;
+
+                        return (
+                          <React.Fragment key={m.no}>
+                            <tr
+                              className={`transition-colors ${
+                                m.completed
+                                  ? 'bg-emerald-50/40 hover:bg-emerald-50/70'
+                                  : isM9 && progressStats.installedWindowsDoorsUnits > 0
+                                  ? 'bg-teal-50/30 hover:bg-teal-50/50'
+                                  : 'hover:bg-slate-50'
+                              }`}
+                            >
+                              {/* No. */}
+                              <td className="py-3 px-4 text-center font-mono font-bold text-slate-600">
+                                {m.no}
+                              </td>
+
+                              {/* Activity Name */}
+                              <td className="py-3 px-4">
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className={`font-semibold ${m.completed ? 'text-emerald-950 font-bold' : 'text-slate-800'}`}>
+                                    {m.activity}
+                                  </span>
+
+                                  {/* Expand/Collapse Dropdown trigger for Milestone 9 */}
+                                  {isM9 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setIsMilestone9Expanded(!isMilestone9Expanded)}
+                                      className="px-2 py-0.5 text-[11px] font-semibold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 rounded-md transition-colors flex items-center space-x-1 cursor-pointer"
+                                      title="Toggle Windows & Doors sub-checklist"
+                                    >
+                                      <span>Dropdown Checklist ({windowsDoors.length} items)</span>
+                                      {isMilestone9Expanded ? (
+                                        <ChevronDown className="w-3.5 h-3.5" />
+                                      ) : (
+                                        <ChevronRight className="w-3.5 h-3.5" />
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Weight */}
+                              <td className="py-3 px-4 text-center font-bold text-slate-700">
+                                {m.weight}%
+                              </td>
+
+                              {/* Earned % */}
+                              <td className="py-3 px-4 text-center">
+                                <span
+                                  className={`inline-block font-mono font-bold px-2 py-0.5 rounded text-xs ${
+                                    m.earned === m.weight
+                                      ? 'bg-emerald-100 text-emerald-800'
+                                      : m.earned > 0
+                                      ? 'bg-teal-100 text-teal-800'
+                                      : 'bg-slate-100 text-slate-500'
+                                  }`}
+                                >
+                                  {m.earned}%
+                                </span>
+                              </td>
+
+                              {/* Checkbox Status */}
+                              <td className="py-3 px-4 text-center">
+                                {isM9 && windowsDoors.length > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setIsMilestone9Expanded(!isMilestone9Expanded)}
+                                    className="p-1 rounded text-teal-600 hover:text-teal-800 cursor-pointer"
+                                    title="View windows and doors installation progress below"
+                                  >
+                                    {m.completed ? (
+                                      <CheckSquare className="w-5 h-5 text-emerald-600 mx-auto" />
+                                    ) : m.earned > 0 ? (
+                                      <span className="font-bold text-[11px] text-teal-700">
+                                        {progressStats.installationProgressPercent}%
+                                      </span>
+                                    ) : (
+                                      <Square className="w-5 h-5 text-slate-400 mx-auto" />
+                                    )}
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleMilestone(m.no)}
+                                    className="p-1 rounded hover:bg-slate-200/60 transition-colors cursor-pointer"
+                                    title={m.completed ? 'Mark as incomplete' : 'Mark milestone as completed'}
+                                  >
+                                    {m.completed ? (
+                                      <CheckSquare className="w-5 h-5 text-emerald-600 mx-auto" />
+                                    ) : (
+                                      <Square className="w-5 h-5 text-slate-400 hover:text-slate-600 mx-auto" />
+                                    )}
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+
+                            {/* MILESTONE 9 EXPANDABLE DROPDOWN SUB-CHECKLIST */}
+                            {isM9 && isMilestone9Expanded && (
+                              <tr className="bg-slate-900 text-slate-100">
+                                <td colSpan={5} className="p-4">
+                                  <div className="bg-[#0f1d2e] rounded-xl p-4 border border-slate-700/80 space-y-3">
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2.5 border-b border-slate-700">
+                                      <div className="flex items-center space-x-2">
+                                        <LayoutGrid className="w-4 h-4 text-teal-400" />
+                                        <div>
+                                          <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                                            Milestone #9 Installation Sub-Checklist (Weight: 25%)
+                                          </h4>
+                                          <p className="text-[11px] text-slate-400">
+                                            Installed: <strong>{progressStats.installedWindowsDoorsUnits}</strong> of <strong>{progressStats.totalWindowsDoorsUnits}</strong> units ({progressStats.installationProgressPercent}% done • Earned: +{progressStats.installationWeightContribution}%)
+                                          </p>
+                                        </div>
+                                      </div>
+
+                                      <button
+                                        type="button"
+                                        onClick={() => setShowAddWindowModal(true)}
+                                        className="px-2.5 py-1 text-xs font-bold bg-teal-600 hover:bg-teal-500 text-white rounded-lg transition-colors flex items-center space-x-1 cursor-pointer self-start sm:self-auto"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" />
+                                        <span>+ Add Window / Door</span>
+                                      </button>
+                                    </div>
+
+                                    {windowsDoors.length === 0 ? (
+                                      <div className="p-4 text-center bg-slate-900/60 rounded-lg border border-dashed border-slate-700 text-slate-400">
+                                        <p className="text-xs font-medium text-slate-300">No windows or doors schedule added for this project yet.</p>
+                                        <p className="text-[11px] text-slate-500 mt-1">
+                                          Click <strong>"+ Add Window / Door"</strong> to specify quantities and dimensions, or check milestone 9 directly above.
+                                        </p>
+                                      </div>
+                                    ) : (
+                                      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-64 overflow-y-auto pr-1">
+                                        {windowsDoors.map((item) => {
+                                          const isDone = item.isInstalled || false;
+
+                                          return (
+                                            <div
+                                              key={item.id}
+                                              className={`p-3 rounded-lg border transition-all flex items-start justify-between gap-3 ${
+                                                isDone
+                                                  ? 'bg-emerald-950/40 border-emerald-600/50 text-emerald-200'
+                                                  : 'bg-slate-800/80 border-slate-700 text-slate-200 hover:border-slate-600'
+                                              }`}
+                                            >
+                                              <div className="flex items-start space-x-2.5 flex-1 min-w-0">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleToggleWindowInstalled(item.id)}
+                                                  className="mt-0.5 text-teal-400 hover:text-teal-300 cursor-pointer"
+                                                  title={isDone ? 'Mark as pending installation' : 'Mark as installed on site'}
+                                                >
+                                                  {isDone ? (
+                                                    <CheckSquare className="w-4 h-4 text-emerald-400" />
+                                                  ) : (
+                                                    <Square className="w-4 h-4 text-slate-400" />
+                                                  )}
+                                                </button>
+
+                                                <div className="flex-1 min-w-0 text-xs">
+                                                  <div className="flex items-center space-x-2">
+                                                    <span className="font-bold text-white uppercase">{item.tag}</span>
+                                                    <span className="px-1.5 py-0.2 rounded bg-slate-700 text-[10px] text-slate-300">{item.type}</span>
+                                                    <span className="font-mono text-teal-300 font-bold">Qty: {item.qty}</span>
+                                                  </div>
+                                                  <div className="text-[11px] text-slate-400 mt-0.5">
+                                                    Size: {item.height}mm (H) × {item.width}mm (W)
+                                                    {item.location && ` • ${item.location}`}
+                                                  </div>
+                                                  {item.remarks && (
+                                                    <div className="text-[10px] text-slate-400 italic truncate mt-0.5">
+                                                      {item.remarks}
+                                                    </div>
+                                                  )}
+                                                </div>
+                                              </div>
+
+                                              <div className="text-right shrink-0 flex flex-col items-end">
+                                                <span
+                                                  className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                                    isDone
+                                                      ? 'bg-emerald-900/60 text-emerald-300 border border-emerald-600/40'
+                                                      : 'bg-amber-900/40 text-amber-300 border border-amber-600/30'
+                                                  }`}
+                                                >
+                                                  {isDone ? '✓ Installed' : 'Pending'}
+                                                </span>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleRemoveWindowDoorItem(item.id)}
+                                                  className="mt-1 text-slate-400 hover:text-rose-400 p-1 cursor-pointer"
+                                                  title="Delete this window schedule item"
+                                                >
+                                                  <Trash2 className="w-3 h-3" />
+                                                </button>
+                                              </div>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </tbody>
+                    <tfoot>
+                      <tr className="bg-slate-900 text-white font-bold text-xs">
+                        <td className="py-3 px-4 text-center">TOTAL</td>
+                        <td className="py-3 px-4 font-bold">14 Project Milestones Completion</td>
+                        <td className="py-3 px-4 text-center text-teal-300">100%</td>
+                        <td className="py-3 px-4 text-center text-teal-300 font-mono text-sm">
+                          {progressStats.percentage}%
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          {progressStats.percentage === 100 ? (
+                            <span className="text-emerald-400 font-bold">100% Complete</span>
+                          ) : (
+                            <span className="text-slate-400">{100 - progressStats.percentage}% Left</span>
+                          )}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: WINDOWS & DOORS SCHEDULE */}
+          {activeTab === 'windows_doors' && (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-2xs">
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                    <LayoutGrid className="w-5 h-5 text-blue-600" />
+                    <span>Windows & Doors Schedule ({progressStats.totalWindowsDoorsUnits} Total Units)</span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Fabrication dimensions, glass specifications, and installation tracking.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowAddWindowModal(true)}
+                  className="px-3.5 py-2 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm transition-colors flex items-center space-x-1.5 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>+ Add Window / Door</span>
+                </button>
+              </div>
+
+              {windowsDoors.length === 0 ? (
+                <div className="bg-white p-8 rounded-xl border border-slate-200 text-center text-slate-400">
+                  <LayoutGrid className="w-10 h-10 mx-auto text-slate-300 mb-2" />
+                  <p className="font-semibold text-slate-600">No windows or doors added to this project yet.</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    Click the <strong>"+ Add Window / Door"</strong> button to specify quantities, height, and width.
+                  </p>
+                </div>
+              ) : (
+                <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs">
+                      <thead>
+                        <tr className="bg-slate-900 text-white uppercase tracking-wider font-semibold">
+                          <th className="py-3 px-3 w-10 text-center">Status</th>
+                          <th className="py-3 px-3.5">Tag / Code</th>
+                          <th className="py-3 px-3.5">Type</th>
+                          <th className="py-3 px-3.5 text-center">Quantity</th>
+                          <th className="py-3 px-3.5">Height (mm)</th>
+                          <th className="py-3 px-3.5">Width (mm)</th>
+                          <th className="py-3 px-3.5">Location / Floor</th>
+                          <th className="py-3 px-3.5">Remarks / Specs</th>
+                          <th className="py-3 px-3.5 text-right">Action</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {windowsDoors.map((item) => {
+                          const isDone = item.isInstalled || false;
+
+                          return (
+                            <tr
+                              key={item.id}
+                              className={`transition-colors ${
+                                isDone ? 'bg-emerald-50/40 hover:bg-emerald-50/70' : 'hover:bg-slate-50'
+                              }`}
+                            >
+                              <td className="py-3 px-3 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleWindowInstalled(item.id)}
+                                  className="cursor-pointer"
+                                  title={isDone ? 'Mark as pending' : 'Mark as installed'}
+                                >
+                                  {isDone ? (
+                                    <CheckSquare className="w-4 h-4 text-emerald-600 mx-auto" />
+                                  ) : (
+                                    <Square className="w-4 h-4 text-slate-400 mx-auto" />
+                                  )}
+                                </button>
+                              </td>
+                              <td className="py-3 px-3.5 font-bold text-slate-900 uppercase">
+                                {item.tag}
+                              </td>
+                              <td className="py-3 px-3.5">
+                                <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
+                                  {item.type}
+                                </span>
+                              </td>
+                              <td className="py-3 px-3.5 text-center font-bold text-teal-800">
+                                {item.qty} {item.qty > 1 ? 'units' : 'unit'}
+                              </td>
+                              <td className="py-3 px-3.5 font-mono">{item.height}</td>
+                              <td className="py-3 px-3.5 font-mono">{item.width}</td>
+                              <td className="py-3 px-3.5 text-slate-600">{item.location || '—'}</td>
+                              <td className="py-3 px-3.5 text-slate-600">{item.remarks || '—'}</td>
+                              <td className="py-3 px-3.5 text-right">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveWindowDoorItem(item.id)}
+                                  className="p-1 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                                  title="Delete item"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 3: OVERVIEW & COST BREAKDOWN */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
               {/* Cost Allocation Progress Bar */}
@@ -448,526 +1039,263 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
 
                 {/* Progress multi-bar */}
                 {grandTotalCost > 0 ? (
-                  <div className="space-y-2">
-                    <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden flex">
+                  <div className="space-y-3">
+                    <div className="h-4 w-full bg-slate-100 rounded-full overflow-hidden flex">
                       <div
+                        className="bg-blue-500 transition-all duration-300"
                         style={{ width: `${matPercent}%` }}
-                        className="bg-blue-500 h-full transition-all duration-500"
-                        title={`Materials: ${formatCurrency(totalMaterialCost)} (${matPercent}%)`}
+                        title={`Materials: ${matPercent}%`}
                       />
                       <div
+                        className="bg-teal-500 transition-all duration-300"
                         style={{ width: `${laborPercent}%` }}
-                        className="bg-teal-500 h-full transition-all duration-500"
-                        title={`Labor: ${formatCurrency(totalLaborCost)} (${laborPercent}%)`}
+                        title={`Labor: ${laborPercent}%`}
                       />
                       <div
+                        className="bg-amber-500 transition-all duration-300"
                         style={{ width: `${mobPercent}%` }}
-                        className="bg-amber-500 h-full transition-all duration-500"
-                        title={`Mobilization: ${formatCurrency(totalMobilizationCost)} (${mobPercent}%)`}
+                        title={`Mobilization: ${mobPercent}%`}
                       />
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-between text-xs text-slate-600 gap-2 pt-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-3 h-3 rounded-full bg-blue-500 inline-block" />
-                        <span>
-                          Materials Pull Out: <strong>{formatCurrency(totalMaterialCost)}</strong> ({matPercent}%)
-                        </span>
+                    <div className="flex flex-wrap items-center justify-between gap-3 text-xs">
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full bg-blue-500" />
+                        <span className="text-slate-600">Materials:</span>
+                        <strong className="text-slate-900">{formatCurrency(totalMaterialCost)} ({matPercent}%)</strong>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-3 h-3 rounded-full bg-teal-500 inline-block" />
-                        <span>
-                          Manpower Labor: <strong>{formatCurrency(totalLaborCost)}</strong> ({laborPercent}%)
-                        </span>
+
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full bg-teal-500" />
+                        <span className="text-slate-600">Labor:</span>
+                        <strong className="text-slate-900">{formatCurrency(totalLaborCost)} ({laborPercent}%)</strong>
                       </div>
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-3 h-3 rounded-full bg-amber-500 inline-block" />
-                        <span>
-                          Mobilization: <strong>{formatCurrency(totalMobilizationCost)}</strong> ({mobPercent}%)
-                        </span>
+
+                      <div className="flex items-center gap-2">
+                        <span className="w-3 h-3 rounded-full bg-amber-500" />
+                        <span className="text-slate-600">Mobilization:</span>
+                        <strong className="text-slate-900">{formatCurrency(totalMobilizationCost)} ({mobPercent}%)</strong>
                       </div>
                     </div>
                   </div>
                 ) : (
-                  <div className="p-4 text-center text-xs text-slate-400 bg-slate-50 rounded-lg">
-                    Walang registered material pull-out o manpower deployment cost sa kasalukuyan.
+                  <div className="py-6 text-center text-slate-400 text-xs">
+                    No pull-outs or manpower deployments recorded for this project yet.
                   </div>
                 )}
               </div>
 
-              {/* 2-Column Summary: Quick Details & Quick Actions */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Project Details Box */}
-                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                    <Building2 className="w-4 h-4 text-slate-700" />
-                    <span>Project Information</span>
-                  </h4>
-                  <div className="space-y-2 text-xs divide-y divide-slate-100">
-                    <div className="flex justify-between py-1">
-                      <span className="text-slate-500">Project Reference:</span>
-                      <span className="font-mono font-bold text-slate-900">{project.id}</span>
-                    </div>
-                    <div className="flex justify-between py-1">
-                      <span className="text-slate-500">Site Location:</span>
-                      <span className="font-semibold text-slate-900 text-right">{project.location || 'N/A'}</span>
-                    </div>
-                    <div className="flex justify-between py-1">
-                      <span className="text-slate-500">Lead Supervisor / Engineer:</span>
-                      <span className="font-semibold text-slate-900">{project.leadPerson || 'Unassigned'}</span>
-                    </div>
-                    <div className="flex justify-between py-1">
-                      <span className="text-slate-500">Operating Status:</span>
-                      <span className="font-semibold text-teal-700">{project.status || 'Active'}</span>
-                    </div>
-                    {project.notes && (
-                      <div className="pt-2 text-slate-600 italic">
-                        "{project.notes}"
-                      </div>
-                    )}
+              {/* Quick Actions Panel */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                  <div className="space-y-1.5">
+                    <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <PackageOpen className="w-4 h-4 text-blue-600" />
+                      <span>Pull Out More Materials</span>
+                    </h4>
+                    <p className="text-xs text-slate-500">
+                      Allocate additional tools, screws, or consumables from warehouse inventory for this project site.
+                    </p>
                   </div>
+
+                  <button
+                    onClick={() => {
+                      if (onOpenAddPullOutForProject) {
+                        onOpenAddPullOutForProject(project.id);
+                      }
+                    }}
+                    className="mt-4 w-full py-2.5 px-4 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-lg border border-blue-200 transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Create Pull-Out for {project.name}</span>
+                  </button>
                 </div>
 
-                {/* Operations Summary & Actions */}
-                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs space-y-3 flex flex-col justify-between">
-                  <div className="space-y-2">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                      <Layers className="w-4 h-4 text-slate-700" />
-                      <span>Operations Summary</span>
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                  <div className="space-y-1.5">
+                    <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <HardHat className="w-4 h-4 text-teal-600" />
+                      <span>Deploy Manpower & Transpo</span>
                     </h4>
-                    <div className="space-y-2 text-xs divide-y divide-slate-100">
-                      <div className="flex justify-between py-1">
-                        <span className="text-slate-500">Pull-Out Tickets:</span>
-                        <span className="font-bold text-blue-700">{projectPullOuts.length} ticket(s)</span>
-                      </div>
-                      <div className="flex justify-between py-1">
-                        <span className="text-slate-500">Unique Material Items:</span>
-                        <span className="font-bold text-slate-900">{flatMaterials.length} item line(s)</span>
-                      </div>
-                      <div className="flex justify-between py-1">
-                        <span className="text-slate-500">Manpower Deployments:</span>
-                        <span className="font-bold text-teal-700">{projectDeployments.length} deployment(s)</span>
-                      </div>
-                      <div className="flex justify-between py-1">
-                        <span className="text-slate-500">Total Manpower Heads:</span>
-                        <span className="font-bold text-slate-900">{totalHeadsDeployed} person-days</span>
-                      </div>
-                    </div>
+                    <p className="text-xs text-slate-500">
+                      Schedule supervisors, installers, and laborers along with mobilization logistics.
+                    </p>
                   </div>
 
-                  <div className="pt-3 border-t border-slate-100 flex items-center gap-2">
-                    <button
-                      onClick={handleDownloadPDF}
-                      className="w-full py-2 px-3 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer"
-                    >
-                      <FileDown className="w-4 h-4 text-teal-400" />
-                      <span>Download Full Project PDF Report</span>
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => {
+                      if (onOpenAddDeploymentForProject) {
+                        onOpenAddDeploymentForProject(project.id);
+                      }
+                    }}
+                    className="mt-4 w-full py-2.5 px-4 bg-teal-50 hover:bg-teal-100 text-teal-700 font-bold text-xs rounded-lg border border-teal-200 transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Create Deployment Ticket</span>
+                  </button>
                 </div>
               </div>
             </div>
           )}
 
-          {/* TAB 2: MATERIALS PULLED OUT LIST */}
+          {/* TAB 4: MATERIALS PULLED OUT */}
           {activeTab === 'materials' && (
             <div className="space-y-4">
-              {/* Filter and Search */}
-              <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="relative w-full sm:w-80">
-                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={materialSearch}
                     onChange={(e) => setMaterialSearch(e.target.value)}
-                    placeholder="Search by Asset ID, description, ticket..."
-                    className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Search materials by code, description..."
+                    className="w-full pl-9 pr-4 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
 
-                <div className="flex items-center space-x-2 w-full sm:w-auto">
-                  <select
-                    value={materialCategoryFilter}
-                    onChange={(e) => setMaterialCategoryFilter(e.target.value)}
-                    className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-slate-700"
-                  >
-                    <option value="all">All Categories</option>
-                    <option value="Hand Tools">Hand Tools</option>
-                    <option value="Power Tools">Power Tools</option>
-                    <option value="Screw/Bolt">Screw/Bolt</option>
-                    <option value="Consumables">Consumables</option>
-                    <option value="Others">Others</option>
-                  </select>
+                <div className="text-xs font-bold text-slate-700 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
+                  Total Materials Cost: <span className="text-teal-700">{formatCurrency(totalMaterialCost)}</span>
                 </div>
               </div>
 
-              {/* Materials Table */}
-              {flatMaterials.length === 0 ? (
-                <div className="bg-white rounded-xl border border-dashed border-slate-300 p-8 text-center space-y-3">
-                  <PackageOpen className="w-8 h-8 text-slate-400 mx-auto" />
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-800">Walang Pull Out na Gamit o Materyales</h4>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Wala pang naipapadalang gamit sa proyektong ito mula sa Pull Out tab.
-                    </p>
-                  </div>
-                </div>
-              ) : filteredMaterials.length === 0 ? (
-                <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500">
-                  Walang tumugmang gamit sa iyong search filter.
+              {filteredMaterials.length === 0 ? (
+                <div className="bg-white p-8 rounded-xl border border-slate-200 text-center text-slate-400 text-xs">
+                  No materials recorded for this project.
                 </div>
               ) : (
                 <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-100 text-slate-700 font-bold uppercase tracking-wider text-[10px] border-b border-slate-200">
-                        <tr>
-                          <th className="py-3 px-4">Date</th>
-                          <th className="py-3 px-4">Pull-Out No.</th>
-                          <th className="py-3 px-4">Asset Code</th>
-                          <th className="py-3 px-4">Description</th>
-                          <th className="py-3 px-4">Category</th>
-                          <th className="py-3 px-4 text-center">Quantity</th>
-                          <th className="py-3 px-4 text-right">Unit Price</th>
-                          <th className="py-3 px-4 text-right">Total Amount</th>
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="bg-slate-900 text-white uppercase tracking-wider font-semibold">
+                        <th className="py-3 px-3.5">Asset ID</th>
+                        <th className="py-3 px-3.5">Description</th>
+                        <th className="py-3 px-3.5">Category</th>
+                        <th className="py-3 px-3.5 text-center">Qty Pulled Out</th>
+                        <th className="py-3 px-3.5 text-right">Unit Price (₱)</th>
+                        <th className="py-3 px-3.5 text-right">Total Cost (₱)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredMaterials.map((mat, idx) => (
+                        <tr key={idx} className="hover:bg-slate-50">
+                          <td className="py-2.5 px-3.5 font-mono font-bold text-teal-800">{mat.assetId}</td>
+                          <td className="py-2.5 px-3.5 font-medium text-slate-900">{mat.description}</td>
+                          <td className="py-2.5 px-3.5">{mat.category}</td>
+                          <td className="py-2.5 px-3.5 text-center font-bold">{mat.quantity} {mat.unit}</td>
+                          <td className="py-2.5 px-3.5 text-right font-mono">{formatCurrency(mat.unitPrice)}</td>
+                          <td className="py-2.5 px-3.5 text-right font-mono font-bold text-slate-900">{formatCurrency(mat.totalCost)}</td>
                         </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {filteredMaterials.map((mat, index) => (
-                          <tr key={`${mat.ticketId}-${mat.assetId}-${index}`} className="hover:bg-slate-50/80 transition-colors">
-                            <td className="py-3 px-4 text-slate-600 font-medium whitespace-nowrap">
-                              {mat.ticketDate}
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className="font-mono font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 text-[11px]">
-                                {mat.ticketId}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 font-mono font-bold text-slate-900 whitespace-nowrap">
-                              {mat.assetId}
-                            </td>
-                            <td className="py-3 px-4 font-medium text-slate-900 max-w-[200px] truncate">
-                              {mat.description}
-                            </td>
-                            <td className="py-3 px-4">
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700">
-                                {mat.category}
-                              </span>
-                            </td>
-                            <td className="py-3 px-4 text-center font-bold text-slate-800">
-                              {mat.quantity} <span className="text-[10px] text-slate-500 font-normal">{mat.unit}</span>
-                            </td>
-                            <td className="py-3 px-4 text-right text-slate-600 font-mono">
-                              {mat.unitPrice > 0 ? formatCurrency(mat.unitPrice) : '-'}
-                            </td>
-                            <td className="py-3 px-4 text-right font-bold text-blue-900 font-mono">
-                              {formatCurrency(mat.totalCost)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot className="bg-slate-50 font-bold border-t border-slate-200 text-slate-900">
-                        <tr>
-                          <td colSpan={5} className="py-3 px-4 text-right uppercase text-[10px] tracking-wider text-slate-500">
-                            Total Material Cost ({filteredMaterials.reduce((acc, m) => acc + m.quantity, 0)} Units)
-                          </td>
-                          <td className="py-3 px-4 text-center font-black text-slate-900">
-                            {filteredMaterials.reduce((acc, m) => acc + m.quantity, 0)}
-                          </td>
-                          <td className="py-3 px-4 text-right font-normal text-slate-400">-</td>
-                          <td className="py-3 px-4 text-right font-extrabold text-blue-900 text-sm font-mono">
-                            {formatCurrency(
-                              filteredMaterials.reduce((acc, m) => acc + m.totalCost, 0)
-                            )}
-                          </td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               )}
             </div>
           )}
 
-          {/* TAB 3: MANPOWER DEPLOYMENTS LIST */}
+          {/* TAB 5: MANPOWER & DEPLOYMENTS */}
           {activeTab === 'manpower' && (
             <div className="space-y-4">
-              {/* Search and summary */}
-              <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center justify-between gap-3">
-                <div className="relative w-full sm:w-80">
-                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
                     type="text"
                     value={deploymentSearch}
                     onChange={(e) => setDeploymentSearch(e.target.value)}
-                    placeholder="Search by ticket ID, supervisor, role..."
-                    className="w-full pl-9 pr-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    placeholder="Search deployment tickets..."
+                    className="w-full pl-9 pr-4 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                   />
                 </div>
 
-                <div className="text-xs font-semibold text-slate-600">
-                  Total Manpower Heads: <strong className="text-teal-700">{totalHeadsDeployed} heads</strong>
+                <div className="text-xs font-bold text-slate-700 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
+                  Total Manpower + Mob: <span className="text-teal-700">{formatCurrency(totalDeploymentCost)}</span>
                 </div>
               </div>
 
-              {projectDeployments.length === 0 ? (
-                <div className="bg-white rounded-xl border border-dashed border-slate-300 p-8 text-center space-y-3">
-                  <HardHat className="w-8 h-8 text-slate-400 mx-auto" />
-                  <div>
-                    <h4 className="text-sm font-bold text-slate-800">Walang Manpower Deployment</h4>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Wala pang naitatalang deployment ng tauhan sa proyektong ito mula sa Deployment tab.
-                    </p>
-                  </div>
-                </div>
-              ) : filteredDeployments.length === 0 ? (
-                <div className="bg-white rounded-xl border border-slate-200 p-8 text-center text-slate-500">
-                  Walang deployment ticket na tumugma sa search filter.
+              {filteredDeployments.length === 0 ? (
+                <div className="bg-white p-8 rounded-xl border border-slate-200 text-center text-slate-400 text-xs">
+                  No manpower deployment tickets recorded for this project.
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {filteredDeployments.map((ticket) => (
-                    <div
-                      key={ticket.id}
-                      className="bg-white rounded-xl border border-slate-200 shadow-2xs p-4.5 space-y-3.5 hover:border-slate-300 transition-all"
-                    >
-                      {/* Top Ticket Details */}
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                        <div className="flex items-center space-x-3">
-                          <span className="font-mono text-xs font-bold text-teal-700 bg-teal-50 px-2.5 py-0.5 rounded-md border border-teal-200">
-                            {ticket.id}
-                          </span>
-                          <span className="text-xs font-bold text-slate-900">
-                            Date: {ticket.deploymentDate}
-                          </span>
-                          <span className="text-xs text-slate-500">
-                            Duration: <strong>{ticket.daysCount} day(s)</strong>
-                          </span>
-                        </div>
-
+                  {filteredDeployments.map((dep) => (
+                    <div key={dep.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2.5">
                         <div className="flex items-center space-x-2">
-                          <span
-                            className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
-                              ticket.status === 'Active On-Site'
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                                : ticket.status === 'Completed'
-                                ? 'bg-blue-50 text-blue-800 border-blue-200'
-                                : 'bg-slate-100 text-slate-700 border-slate-200'
-                            }`}
-                          >
-                            {ticket.status}
+                          <span className="font-mono font-bold text-xs text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+                            {dep.id}
                           </span>
-                          <span className="text-xs font-mono font-extrabold text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-md border border-emerald-200">
-                            {formatCurrency(ticket.totalCost)}
+                          <span className="text-xs text-slate-600">
+                            Date: <strong>{dep.deploymentDate}</strong> • {dep.daysCount} working days
                           </span>
+                        </div>
+                        <div className="text-xs font-bold text-slate-900">
+                          Ticket Cost: <span className="text-emerald-700">{formatCurrency(dep.totalCost)}</span>
                         </div>
                       </div>
 
-                      {/* Deployed Roles Badges & Headcount */}
-                      <div className="space-y-2">
-                        <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
-                          Deployed Personnel & Salary Rates:
-                        </span>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                          {ticket.lines.map((line, lIdx) => (
-                            <div
-                              key={lIdx}
-                              className="bg-slate-50 p-2.5 rounded-lg border border-slate-200/80 flex items-center justify-between text-xs"
-                            >
-                              <div>
-                                <span className="font-bold text-slate-900 block">
-                                  {line.quantity}x {line.role}
-                                </span>
-                                <span className="text-[10px] text-slate-500">
-                                  {formatCurrency(line.dailyRate)}/day × {line.days}d
-                                </span>
-                              </div>
-                              <span className="font-mono font-bold text-slate-800">
-                                {formatCurrency(line.subtotal)}
-                              </span>
-                            </div>
-                          ))}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs">
+                        <div className="p-2 bg-slate-50 rounded-lg">
+                          <span className="text-slate-500 block text-[10px] uppercase">Supervisor</span>
+                          <strong className="text-slate-800">{dep.supervisor || dep.leadSupervisor || 'N/A'}</strong>
                         </div>
-                      </div>
-
-                      {/* Cost Breakdown & Signatories */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1 text-xs">
-                        {/* Cost items */}
-                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 space-y-1 text-slate-600">
-                          <div className="flex justify-between">
-                            <span>Labor Subtotal:</span>
-                            <span className="font-bold text-slate-900">{formatCurrency(ticket.laborCost)}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span>Mobilization & Logistics:</span>
-                            <span className="font-bold text-slate-900">{formatCurrency(ticket.mobilizationCost)}</span>
-                          </div>
-                          {ticket.vehicleDetails && (
-                            <div className="text-[10px] text-slate-500 pt-1">
-                              Logistics / Vehicle: {ticket.vehicleDetails}
-                            </div>
-                          )}
+                        <div className="p-2 bg-slate-50 rounded-lg">
+                          <span className="text-slate-500 block text-[10px] uppercase">Labor Subtotal</span>
+                          <strong className="text-slate-800">{formatCurrency(dep.laborCost)}</strong>
                         </div>
-
-                        {/* Signatories */}
-                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 space-y-1 text-slate-600">
-                          <div className="flex justify-between">
-                            <span className="text-[11px] text-slate-500">Prepared By:</span>
-                            <span className="font-semibold text-slate-900">{ticket.preparedBy || "M' Chrissna / Maricel"}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-[11px] text-slate-500">Site Supervisor:</span>
-                            <span className="font-semibold text-slate-900">{ticket.supervisor || ticket.leadSupervisor || 'N/A'}</span>
-                          </div>
-                          <div className="flex justify-between">
-                            <span className="text-[11px] text-slate-500">Project Manager:</span>
-                            <span className="font-semibold text-slate-900">{ticket.projectManager || 'N/A'}</span>
-                          </div>
+                        <div className="p-2 bg-slate-50 rounded-lg">
+                          <span className="text-slate-500 block text-[10px] uppercase">Mobilization</span>
+                          <strong className="text-slate-800">{formatCurrency(dep.mobilizationCost)}</strong>
+                        </div>
+                        <div className="p-2 bg-slate-50 rounded-lg">
+                          <span className="text-slate-500 block text-[10px] uppercase">Status</span>
+                          <strong className="text-teal-700">{dep.status}</strong>
                         </div>
                       </div>
                     </div>
                   ))}
-
-                  {/* Manpower Total Footer Card */}
-                  <div className="bg-teal-50 border border-teal-200 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                    <div>
-                      <span className="text-[10px] uppercase font-bold text-teal-800 tracking-wider block">
-                        Total Manpower & Deployment Cost for {project.name}
-                      </span>
-                      <span className="text-slate-600">
-                        {projectDeployments.length} tickets • {totalHeadsDeployed} heads deployed
-                      </span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-lg font-black text-teal-950 font-mono block">
-                        {formatCurrency(totalDeploymentCost)}
-                      </span>
-                      <span className="text-[10px] text-teal-700 font-semibold">
-                        Labor: {formatCurrency(totalLaborCost)} | Mobilization: {formatCurrency(totalMobilizationCost)}
-                      </span>
-                    </div>
-                  </div>
                 </div>
               )}
             </div>
           )}
 
-          {/* TAB 4: COST REPORT & PRINTABLE PREVIEW */}
+          {/* TAB 6: PRINTABLE REPORT / PDF */}
           {activeTab === 'report' && (
-            <div className="space-y-5">
-              {/* Action Banner */}
-              <div className="bg-indigo-900 text-white p-5 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
-                <div className="space-y-1">
-                  <h3 className="text-base font-bold flex items-center gap-2">
-                    <FileText className="w-5 h-5 text-indigo-300" />
-                    <span>Official Project Financial & Operational Cost Summary</span>
-                  </h3>
-                  <p className="text-xs text-indigo-200 max-w-xl">
-                    I-download ang opisyal na PDF report na kumpleto sa Project Information, Listahan ng Pulled Out Materials at Tools, Manpower Deployments Breakdown, at pirma ng mga Authorized Signatories.
-                  </p>
-                </div>
-
-                <button
-                  onClick={handleDownloadPDF}
-                  className="px-5 py-2.5 text-xs font-bold text-slate-900 bg-teal-400 hover:bg-teal-300 rounded-xl shadow-md transition-all flex items-center justify-center space-x-2 cursor-pointer whitespace-nowrap"
-                >
-                  <FileDown className="w-4 h-4" />
-                  <span>Download PDF Report</span>
-                </button>
-              </div>
-
-              {/* Formal Report Preview Slip */}
-              <div className="bg-white p-6 sm:p-8 rounded-xl border border-slate-300 shadow-md space-y-6 text-slate-900 font-sans">
-                {/* Header */}
-                <div className="text-center border-b border-slate-300 pb-4 space-y-1">
-                  <h2 className="text-lg font-black tracking-tight text-slate-900">
-                    DIVERSIFIED SOURCE INC.
-                  </h2>
-                  <h3 className="text-xs font-bold text-teal-700 uppercase tracking-wider">
-                    PROJECT COST & DISPATCH SUMMARY REPORT
-                  </h3>
-                  <p className="text-[11px] text-slate-500">
-                    Report Ref: DSI-PRJ-{project.id} • Date: {new Date().toLocaleDateString()}
-                  </p>
-                </div>
-
-                {/* Metadata Grid */}
-                <div className="grid grid-cols-2 gap-4 text-xs bg-slate-50 p-4 rounded-lg border border-slate-200">
+            <div className="space-y-4">
+              <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-2xs space-y-4">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-4">
                   <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Project Name:</span>
-                    <strong className="text-slate-900 text-sm">{project.name}</strong>
-                    <div className="text-slate-600 mt-1">Location: {project.location || 'N/A'}</div>
+                    <h3 className="text-lg font-bold text-slate-900">Official Project Cost & Progress Statement</h3>
+                    <p className="text-xs text-slate-500">Comprehensive breakdown for client billing and company audits.</p>
                   </div>
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Project In-Charge:</span>
-                    <strong className="text-slate-900 text-sm">{project.leadPerson || 'Unassigned'}</strong>
-                    <div className="text-slate-600 mt-1">Status: <strong className="text-teal-700">{project.status || 'Active'}</strong></div>
-                  </div>
+                  <button
+                    onClick={handleDownloadPDF}
+                    className="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs rounded-xl shadow-xs transition-colors flex items-center space-x-2 cursor-pointer"
+                  >
+                    <FileDown className="w-4 h-4" />
+                    <span>Download PDF Now</span>
+                  </button>
                 </div>
 
-                {/* Executive Summary Table */}
-                <div className="space-y-2">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700">
-                    1. Executive Financial Summary
-                  </h4>
-                  <table className="w-full text-xs border border-slate-300">
-                    <thead className="bg-slate-800 text-white font-bold">
-                      <tr>
-                        <th className="p-2 text-left">Category</th>
-                        <th className="p-2 text-left">Details</th>
-                        <th className="p-2 text-right">Subtotal Amount</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-200">
-                      <tr>
-                        <td className="p-2 font-bold text-slate-800">Materials & Tools Pulled Out</td>
-                        <td className="p-2 text-slate-600">{flatMaterials.length} item lines ({totalMaterialUnits} units)</td>
-                        <td className="p-2 text-right font-mono font-bold text-slate-900">{formatCurrency(totalMaterialCost)}</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2 font-bold text-slate-800">Manpower Labor Cost</td>
-                        <td className="p-2 text-slate-600">{projectDeployments.length} tickets ({totalHeadsDeployed} heads)</td>
-                        <td className="p-2 text-right font-mono font-bold text-slate-900">{formatCurrency(totalLaborCost)}</td>
-                      </tr>
-                      <tr>
-                        <td className="p-2 font-bold text-slate-800">Mobilization & Logistics</td>
-                        <td className="p-2 text-slate-600">Transportation, skyway, toll fees</td>
-                        <td className="p-2 text-right font-mono font-bold text-slate-900">{formatCurrency(totalMobilizationCost)}</td>
-                      </tr>
-                      <tr className="bg-teal-50 font-extrabold text-teal-950">
-                        <td className="p-2.5 text-sm" colSpan={2}>GRAND TOTAL PROJECT EXPENSE</td>
-                        <td className="p-2.5 text-right text-base font-black text-teal-900 font-mono">
-                          {formatCurrency(grandTotalCost)}
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Signatures Preview */}
-                <div className="pt-6 border-t border-slate-300 grid grid-cols-3 gap-4 text-center text-xs">
-                  <div className="space-y-3 bg-slate-50/70 p-3 rounded border border-slate-200">
-                    <span className="text-[10px] font-bold uppercase text-slate-500 block">Prepared By</span>
-                    <div className="border-b border-slate-400 pb-1 font-bold text-slate-900">
-                      M' Chrissna / Maricel
+                <div className="space-y-3 text-xs text-slate-700">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[10px] uppercase font-bold">Project Completion</span>
+                      <strong className="text-base text-teal-800">{progressStats.percentage}%</strong>
                     </div>
-                    <span className="text-[9px] text-slate-400">DSI Office Admin</span>
-                  </div>
-
-                  <div className="space-y-3 bg-slate-50/70 p-3 rounded border border-slate-200">
-                    <span className="text-[10px] font-bold uppercase text-slate-500 block">Site Supervisor</span>
-                    <div className="border-b border-slate-400 pb-1 font-bold text-slate-900">
-                      {project.leadPerson || 'Lead Supervisor'}
+                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[10px] uppercase font-bold">Materials Pulled Out</span>
+                      <strong className="text-base text-blue-800">{formatCurrency(totalMaterialCost)}</strong>
                     </div>
-                    <span className="text-[9px] text-slate-400">Site Operations In-Charge</span>
-                  </div>
-
-                  <div className="space-y-3 bg-slate-50/70 p-3 rounded border border-slate-200">
-                    <span className="text-[10px] font-bold uppercase text-slate-500 block">Project Manager</span>
-                    <div className="border-b border-slate-400 pb-1 font-bold text-slate-900">
-                      Engr. Roberto Santos
+                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[10px] uppercase font-bold">Manpower Labor</span>
+                      <strong className="text-base text-teal-800">{formatCurrency(totalLaborCost)}</strong>
                     </div>
-                    <span className="text-[9px] text-slate-400">Project Operations Head</span>
+                    <div className="p-3 bg-slate-50 rounded-lg border border-slate-200">
+                      <span className="text-slate-500 block text-[10px] uppercase font-bold">Total Project Cost</span>
+                      <strong className="text-base text-emerald-800">{formatCurrency(grandTotalCost)}</strong>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -976,28 +1304,140 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-5 sm:px-6 py-3.5 bg-white border-t border-slate-200 flex items-center justify-between gap-3 text-xs">
-          <div className="text-slate-500 text-[11px]">
-            Project: <strong className="text-slate-800">{project.name}</strong> • Total Expense: <strong className="text-emerald-700 font-mono">{formatCurrency(grandTotalCost)}</strong>
+        <div className="p-4 bg-white border-t border-slate-200 flex items-center justify-between text-xs text-slate-500">
+          <div>
+            Project: <strong className="text-slate-800">{project.name}</strong> ({project.id})
           </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={handleDownloadPDF}
-              className="px-4 py-2 font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-lg transition-colors flex items-center space-x-1.5 cursor-pointer shadow-2xs"
-            >
-              <FileDown className="w-4 h-4" />
-              <span>Download PDF</span>
-            </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
-            >
-              Close
-            </button>
-          </div>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+          >
+            Close
+          </button>
         </div>
       </div>
+
+      {/* QUICK ADD WINDOW/DOOR MODAL */}
+      {showAddWindowModal && (
+        <div className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full p-5 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h4 className="text-sm font-bold text-slate-900 flex items-center space-x-2">
+                <LayoutGrid className="w-4 h-4 text-teal-600" />
+                <span>Add Window / Door Item</span>
+              </h4>
+              <button
+                type="button"
+                onClick={() => setShowAddWindowModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleAddWindowDoorSubmit} className="space-y-3 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Tag / Mark</label>
+                  <input
+                    type="text"
+                    value={newTag}
+                    onChange={(e) => setNewTag(e.target.value)}
+                    placeholder="e.g. W-1, D-2"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 font-semibold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Type</label>
+                  <select
+                    value={newType}
+                    onChange={(e) => setNewType(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 cursor-pointer"
+                  >
+                    <option value="Window">Window</option>
+                    <option value="Door">Door</option>
+                    <option value="Curtain Wall">Curtain Wall</option>
+                    <option value="Glass Partition">Partition</option>
+                    <option value="Louvers">Louvers</option>
+                    <option value="Other">Other</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Qty (Units)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={newQty}
+                    onChange={(e) => setNewQty(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 font-bold text-teal-800"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Height (mm)</label>
+                  <input
+                    type="text"
+                    value={newHeight}
+                    onChange={(e) => setNewHeight(e.target.value)}
+                    placeholder="2100"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Width (mm)</label>
+                  <input
+                    type="text"
+                    value={newWidth}
+                    onChange={(e) => setNewWidth(e.target.value)}
+                    placeholder="1800"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Location / Floor</label>
+                <input
+                  type="text"
+                  value={newLocation}
+                  onChange={(e) => setNewLocation(e.target.value)}
+                  placeholder="e.g. 2nd Floor Master Bedroom"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Remarks / Glass Specs</label>
+                <input
+                  type="text"
+                  value={newRemarks}
+                  onChange={(e) => setNewRemarks(e.target.value)}
+                  placeholder="e.g. 4-track sliding, 6mm tempered glass"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-lg focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
+
+              <div className="flex items-center justify-end space-x-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowAddWindowModal(false)}
+                  className="px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg shadow-sm cursor-pointer"
+                >
+                  Add Item
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

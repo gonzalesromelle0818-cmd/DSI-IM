@@ -24,11 +24,15 @@ import {
   EyeOff,
   ShieldAlert,
   X,
+  LayoutGrid,
+  CheckSquare,
+  Percent,
 } from 'lucide-react';
 import { Project, InventoryItem, PullOutTicket, DeploymentTicket } from '../types';
 import { formatCurrency } from '../utils/inventoryHelpers';
 import { ProjectDetailsModal } from './ProjectDetailsModal';
 import { generateProjectCostPDF } from '../utils/generateProjectCostPDF';
+import { calculateProjectProgress } from '../utils/projectMilestones';
 
 interface ProjectsViewProps {
   projects: Project[];
@@ -41,6 +45,7 @@ interface ProjectsViewProps {
   onNavigateToInventory: () => void;
   onOpenAddPullOutForProject?: (projectId: string) => void;
   onOpenAddDeploymentForProject?: (projectId: string) => void;
+  onUpdateProject?: (updatedProject: Project) => void;
 }
 
 const REQUIRED_DELETE_PASSWORD = 'aerith0818';
@@ -56,6 +61,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   onNavigateToInventory,
   onOpenAddPullOutForProject,
   onOpenAddDeploymentForProject,
+  onUpdateProject,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Planning' | 'Completed' | 'On Hold'>('all');
@@ -411,6 +417,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           {filteredProjects.map((project) => {
             const metrics = getProjectComprehensiveMetrics(project.id, project.name);
             const status = project.status || 'Active';
+            const progress = calculateProjectProgress(project);
+            const windowsCount = (project.windowsDoors || []).reduce((acc, curr) => acc + (Number(curr.qty) || 1), 0);
 
             const statusColors = {
               Active: 'bg-emerald-50 text-emerald-800 border-emerald-200',
@@ -449,6 +457,31 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       {project.name}
                     </h3>
                     <ChevronRight className="w-5 h-5 text-slate-300 group-hover:text-teal-600 group-hover:translate-x-1 transition-all flex-shrink-0" />
+                  </div>
+
+                  {/* Progress Milestone Strip */}
+                  <div className="space-y-1.5 bg-slate-50 p-2.5 rounded-lg border border-slate-100">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-slate-700 flex items-center gap-1">
+                        <CheckSquare className="w-3.5 h-3.5 text-teal-600" />
+                        <span>Completion Milestone</span>
+                      </span>
+                      <span className="font-mono font-bold text-teal-800">
+                        {progress.percentage}%
+                      </span>
+                    </div>
+                    <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-teal-600 rounded-full transition-all duration-300"
+                        style={{ width: `${progress.percentage}%` }}
+                      />
+                    </div>
+                    <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
+                      <span>{progress.completedMilestonesCount}/14 Milestones</span>
+                      <span>
+                        {windowsCount > 0 ? `${progress.installedWindowsDoorsUnits}/${windowsCount} Windows/Doors` : 'No window sched'}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Location & Engineer */}
@@ -545,6 +578,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         inventoryItems={items}
         onOpenAddPullOutForProject={onOpenAddPullOutForProject}
         onOpenAddDeploymentForProject={onOpenAddDeploymentForProject}
+        onUpdateProject={(updated) => {
+          if (onUpdateProject) onUpdateProject(updated);
+          setSelectedProjectForDetails(updated);
+        }}
       />
 
       {/* Direct Card Delete with Password Confirmation Modal */}

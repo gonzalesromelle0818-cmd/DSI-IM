@@ -9,10 +9,12 @@ import {
   PurchaseRecord,
 } from './types';
 import { INITIAL_INVENTORY } from './data/mockInventory';
+import { INITIAL_PROJECTS } from './data/initialProjects';
 import { DEFAULT_MANPOWER_RATES } from './data/defaultManpower';
 import { getReorderStatus } from './utils/inventoryHelpers';
 import { Sidebar } from './components/Sidebar';
 import { TopNav } from './components/TopNav';
+import { DashboardView } from './components/DashboardView';
 import { InventoryView } from './components/InventoryView';
 import { PullOutView } from './components/PullOutView';
 import { DeploymentView } from './components/DeploymentView';
@@ -88,8 +90,34 @@ const INITIAL_PURCHASES: PurchaseRecord[] = [
   },
 ];
 
+const ACTIVE_TAB_STORAGE_KEY = 'dsi_active_tab';
+
 export default function App() {
-  const [currentTab, setCurrentTab] = useState<TabType>('inventory');
+  const [currentTab, setCurrentTab] = useState<TabType>(() => {
+    try {
+      const savedTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) as TabType;
+      if (
+        savedTab &&
+        ['dashboard', 'inventory', 'pullout', 'deployment', 'projects', 'purchases'].includes(
+          savedTab
+        )
+      ) {
+        return savedTab;
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return 'dashboard';
+  });
+
+  // Keep active tab synced in local storage
+  useEffect(() => {
+    try {
+      localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, currentTab);
+    } catch (e) {
+      console.error('Failed to save active tab', e);
+    }
+  }, [currentTab]);
 
   // Clean inventory state with localStorage persistence
   const [items, setItems] = useState<InventoryItem[]>(() => {
@@ -104,17 +132,18 @@ export default function App() {
     return INITIAL_INVENTORY;
   });
 
-  // Projects state (starts clean)
+  // Projects state (with rich initial seed or saved projects)
   const [projects, setProjects] = useState<Project[]>(() => {
     try {
       const saved = localStorage.getItem(PROJECTS_STORAGE_KEY);
       if (saved) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch (e) {
       console.error('Failed to parse saved projects', e);
     }
-    return [];
+    return INITIAL_PROJECTS;
   });
 
   // Pull Out Tickets state (starts clean)
@@ -242,6 +271,12 @@ export default function App() {
     const status = getReorderStatus(item.stockQty, item.minReorderLevel);
     return status === 'reorder_needed' || status === 'out_of_stock';
   }).length;
+
+  const handleUpdateProject = (updatedProject: Project) => {
+    setProjects((prev) =>
+      prev.map((p) => (p.id === updatedProject.id ? updatedProject : p))
+    );
+  };
 
   // Inventory Handlers
   const handleAddItem = (newItem: InventoryItem) => {
@@ -727,6 +762,21 @@ export default function App() {
 
         {/* Dynamic Views based on active tab */}
         <main className="flex-1 overflow-y-auto bg-slate-50/50">
+          {currentTab === 'dashboard' && (
+            <DashboardView
+              projects={projects}
+              items={items}
+              pullOutTickets={pullOutTickets}
+              deploymentTickets={deploymentTickets}
+              onNavigateTab={(tab) => setCurrentTab(tab)}
+              onOpenAddProjectModal={() => {
+                setCurrentTab('projects');
+                setIsAddProjectModalOpen(true);
+              }}
+              onUpdateProject={handleUpdateProject}
+            />
+          )}
+
           {currentTab === 'inventory' && (
             <InventoryView
               items={items}
@@ -786,6 +836,7 @@ export default function App() {
               onOpenAddDeploymentForProject={(pId) => {
                 setIsAddDeploymentModalOpen(true);
               }}
+              onUpdateProject={handleUpdateProject}
             />
           )}
 

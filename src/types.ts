@@ -1,4 +1,4 @@
-export type TabType = 'inventory' | 'pull_out' | 'deployment' | 'projects' | 'purchases';
+export type TabType = 'dashboard' | 'inventory' | 'pull_out' | 'deployment' | 'projects' | 'purchases';
 
 export type ItemCategory =
   | 'Hand Tools'
@@ -76,6 +76,32 @@ export interface DeploymentTicket {
   createdAt: string;
 }
 
+export interface WindowDoorItem {
+  id: string; // e.g. "WD-001"
+  tag: string; // e.g. "W-1", "D-1", "Master Bedroom Sliding Window"
+  type: 'Window' | 'Door' | 'Curtain Wall' | 'Glass Partition' | 'Louvers' | 'Other';
+  qty: number; // Quantity of units
+  height: number | string; // Height (e.g. 2100 or "2100mm")
+  width: number | string; // Width (e.g. 1800 or "1800mm")
+  unit?: string; // "mm", "cm", "m", "in", "ft"
+  location?: string; // Floor / Area
+  remarks?: string; // Profile, glass spec, hardware
+  isInstalled?: boolean; // Installation status for milestone tracking
+  installedQty?: number; // How many installed out of qty
+  installedDate?: string;
+  installerNotes?: string;
+}
+
+export interface ProjectMilestone {
+  id: number; // 1 to 14
+  no: number;
+  activity: string;
+  weight: number; // e.g. 5, 10, 10, 5, 5, 15, 5, 5, 25, 2, 3, 5, 3, 2 (Total = 100%)
+  completed: boolean;
+  completedDate?: string;
+  remarks?: string;
+}
+
 export interface Project {
   id: string; // e.g. "PRJ-001"
   name: string;
@@ -83,7 +109,13 @@ export interface Project {
   leadPerson?: string; // Project In-charge / Engineer
   status?: 'Active' | 'Planning' | 'Completed' | 'On Hold';
   createdAt?: string;
+  startDate?: string;
+  targetCompletionDate?: string;
+  budget?: number; // Total Project Contract / Budget (₱)
   notes?: string;
+  description?: string;
+  windowsDoors?: WindowDoorItem[];
+  checklist?: ProjectMilestone[];
 }
 
 export interface ProjectAllocation {

@@ -134,15 +134,17 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
   }, [deploymentDate]);
 
   // Reset or initialize on modal open
+  const prevIsOpenRef = React.useRef(false);
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !prevIsOpenRef.current) {
       setTicketIdPreview(generateTicketId());
       setErrors({});
       if (projects.length > 0 && !projectId) {
         setProjectId(projects[0].id);
       }
     }
-  }, [isOpen, projects]);
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

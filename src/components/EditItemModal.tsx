@@ -25,22 +25,38 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
   onUpdate,
   onDelete,
 }) => {
-  if (!isOpen || !item) return null;
-
-  const [assetId, setAssetId] = useState(item.assetId);
-  const [description, setDescription] = useState(item.description);
-  const [category, setCategory] = useState<ItemCategory>(item.category);
-  const [stockQty, setStockQty] = useState<number | ''>(item.stockQty);
-  const [unit, setUnit] = useState(item.unit);
-  const [minReorderLevel, setMinReorderLevel] = useState<number | ''>(item.minReorderLevel);
+  const [assetId, setAssetId] = useState(item?.assetId || '');
+  const [description, setDescription] = useState(item?.description || '');
+  const [category, setCategory] = useState<ItemCategory>(item?.category || 'Hand Tools');
+  const [stockQty, setStockQty] = useState<number | ''>(item?.stockQty ?? 0);
+  const [unit, setUnit] = useState(item?.unit || 'pcs');
+  const [minReorderLevel, setMinReorderLevel] = useState<number | ''>(item?.minReorderLevel ?? 5);
   const [unitPrice, setUnitPrice] = useState<number | ''>(
-    item.unitPrice !== undefined ? item.unitPrice : ''
+    item?.unitPrice !== undefined ? item.unitPrice : ''
   );
-  const [location, setLocation] = useState(item.location || '');
-  const [brandModel, setBrandModel] = useState(item.brandModel || '');
-  const [notes, setNotes] = useState(item.notes || '');
-
+  const [location, setLocation] = useState(item?.location || '');
+  const [brandModel, setBrandModel] = useState(item?.brandModel || '');
+  const [notes, setNotes] = useState(item?.notes || '');
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+
+  // Sync state when a different item is opened for editing
+  React.useEffect(() => {
+    if (item && isOpen) {
+      setAssetId(item.assetId);
+      setDescription(item.description);
+      setCategory(item.category);
+      setStockQty(item.stockQty);
+      setUnit(item.unit);
+      setMinReorderLevel(item.minReorderLevel);
+      setUnitPrice(item.unitPrice !== undefined ? item.unitPrice : '');
+      setLocation(item.location || '');
+      setBrandModel(item.brandModel || '');
+      setNotes(item.notes || '');
+      setIsConfirmingDelete(false);
+    }
+  }, [item?.id, isOpen]);
+
+  if (!isOpen || !item) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

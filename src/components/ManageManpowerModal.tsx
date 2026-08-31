@@ -38,14 +38,16 @@ export const ManageManpowerModal: React.FC<ManageManpowerModalProps> = ({
   const [errorMsg, setErrorMsg] = useState('');
 
   // Keep localRates in sync when opening modal
+  const prevIsOpenRef = React.useRef(false);
   React.useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !prevIsOpenRef.current) {
       setLocalRates(rates);
       setEditingId(null);
       setShowAddForm(false);
       setErrorMsg('');
     }
-  }, [isOpen, rates]);
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen]);
 
   if (!isOpen) return null;
 

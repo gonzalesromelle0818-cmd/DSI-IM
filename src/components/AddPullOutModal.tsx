@@ -61,24 +61,23 @@ export const AddPullOutModal: React.FC<AddPullOutModalProps> = ({
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
+  const prevIsOpenRef = React.useRef(false);
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && !prevIsOpenRef.current) {
       setTicketId(generateTicketNumber());
 
       if (preselectedProjectId) {
         setSelectedProjectId(preselectedProjectId);
         setDestinationMode('select');
         const match = projects.find((p) => p.id === preselectedProjectId);
-        if (match && match.leadPerson && !requestedBy) {
+        if (match && match.leadPerson) {
           setRequestedBy(match.leadPerson);
         }
       } else if (projects.length > 0) {
         setDestinationMode('select');
-        if (!selectedProjectId) {
-          setSelectedProjectId(projects[0].id);
-          if (projects[0].leadPerson && !requestedBy) {
-            setRequestedBy(projects[0].leadPerson);
-          }
+        setSelectedProjectId(projects[0].id);
+        if (projects[0].leadPerson) {
+          setRequestedBy(projects[0].leadPerson);
         }
       } else {
         setDestinationMode('new');
@@ -86,14 +85,15 @@ export const AddPullOutModal: React.FC<AddPullOutModalProps> = ({
       }
 
       // Reset items in draft if opened fresh
-      if (pullItems.length === 0 && inventoryItems.length > 0) {
+      if (inventoryItems.length > 0) {
         const firstInStock = inventoryItems.find((i) => i.stockQty > 0) || inventoryItems[0];
         if (firstInStock) {
           setSelectedItemId(firstInStock.id);
         }
       }
     }
-  }, [isOpen, projects, inventoryItems, preselectedProjectId]);
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen, preselectedProjectId]);
 
   // When project changes in dropdown, auto-fill lead
   const handleProjectSelectChange = (pId: string) => {

@@ -76,9 +76,11 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
   const [restockReceivedBy, setRestockReceivedBy] = useState("M' Chrissna");
   const [restockNote, setRestockNote] = useState('');
 
-  // Sync state whenever modal opens or preselected item changes
+  // Sync state ONLY when modal transitions to open or preselected item changes
+  const prevIsOpenRef = React.useRef(false);
   useEffect(() => {
-    if (isOpen) {
+    // Only reset if modal just opened from closed state or preselectedItemId explicitly changed
+    if (isOpen && !prevIsOpenRef.current) {
       setErrors({});
       if (preselectedItemId) {
         setMode('add_stock');
@@ -111,7 +113,8 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
         }
       }
     }
-  }, [isOpen, preselectedItemId, existingItems]);
+    prevIsOpenRef.current = isOpen;
+  }, [isOpen, preselectedItemId]);
 
   // When changing selected restock item in dropdown, update current price suggestion
   useEffect(() => {

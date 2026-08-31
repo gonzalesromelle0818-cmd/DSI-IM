@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bell, Settings, HelpCircle, AlertTriangle, RefreshCw, Cloud, CheckCircle2 } from 'lucide-react';
+import { Bell, Settings, HelpCircle, AlertTriangle, RefreshCw, Cloud } from 'lucide-react';
 import { TabType } from '../types';
 
 interface TopNavProps {
@@ -19,6 +19,8 @@ export const TopNav: React.FC<TopNavProps> = ({
 }) => {
   const getTabTitle = (tab: TabType) => {
     switch (tab) {
+      case 'dashboard':
+        return 'Executive Operations Dashboard';
       case 'inventory':
         return 'Inventory';
       case 'pull_out':
@@ -26,7 +28,7 @@ export const TopNav: React.FC<TopNavProps> = ({
       case 'deployment':
         return 'Manpower Deployment & Logistics';
       case 'projects':
-        return 'Projects Allocation';
+        return 'Projects Allocation & Milestones';
       case 'purchases':
         return 'Purchases & Reorders';
       default:
@@ -74,7 +76,7 @@ export const TopNav: React.FC<TopNavProps> = ({
           <button
             onClick={onResetData}
             title="Reset to default seed data"
-            className="hidden md:flex items-center space-x-1 px-2.5 py-1 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors"
+            className="hidden md:flex items-center space-x-1 px-2.5 py-1 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Reset Demo Data</span>
@@ -86,7 +88,7 @@ export const TopNav: React.FC<TopNavProps> = ({
           <button
             id="btn-notifications"
             onClick={onQuickFilterReorder}
-            className="relative p-2 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="relative p-2 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
             title={reorderCount > 0 ? `${reorderCount} items need replenish` : 'No new notifications'}
           >
             <Bell className="w-5 h-5" />
@@ -97,7 +99,7 @@ export const TopNav: React.FC<TopNavProps> = ({
 
           <button
             id="btn-settings"
-            className="p-2 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="p-2 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
             title="Settings"
           >
             <Settings className="w-5 h-5" />
@@ -105,7 +107,7 @@ export const TopNav: React.FC<TopNavProps> = ({
 
           <button
             id="btn-help"
-            className="p-2 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="p-2 rounded-full text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
             title="Help & Documentation"
           >
             <HelpCircle className="w-5 h-5" />
@@ -119,10 +121,10 @@ export const TopNav: React.FC<TopNavProps> = ({
           </div>
           <div className="hidden sm:block text-left">
             <div className="text-xs font-semibold text-slate-800 leading-tight">
-              DSI Admin
+              Administrator
             </div>
             <div className="text-[11px] text-slate-500 font-medium">
-              Inventory Mgr
+              System Admin
             </div>
           </div>
         </div>

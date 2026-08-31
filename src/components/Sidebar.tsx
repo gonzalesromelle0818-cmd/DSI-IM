@@ -1,5 +1,5 @@
 import React from 'react';
-import { Package, ShoppingBag, Users, FolderKanban, ShoppingCart, AlertCircle } from 'lucide-react';
+import { Package, ShoppingBag, Users, FolderKanban, ShoppingCart, AlertCircle, LayoutDashboard } from 'lucide-react';
 import { TabType } from '../types';
 
 interface SidebarProps {
@@ -68,46 +68,77 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Navigation Links */}
-      <div className="flex-1 px-3 py-6 space-y-1.5 overflow-y-auto">
-        <div className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
-          Core Operations
+      <div className="flex-1 px-3 py-4 space-y-4 overflow-y-auto">
+        {/* DASHBOARD SECTION ABOVE CORE OPERATIONS */}
+        <div>
+          <div className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            Overview
+          </div>
+          <button
+            id="nav-tab-dashboard"
+            onClick={() => onSelectTab('dashboard')}
+            className={`w-full flex items-center justify-between px-4 py-3 rounded-xl text-sm font-medium transition-all duration-150 group cursor-pointer ${
+              currentTab === 'dashboard'
+                ? 'bg-teal-600 text-white shadow-md shadow-teal-900/30 font-bold'
+                : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+            }`}
+          >
+            <div className="flex items-center space-x-3.5">
+              <LayoutDashboard
+                className={`w-5 h-5 transition-colors ${
+                  currentTab === 'dashboard' ? 'text-white' : 'text-slate-400 group-hover:text-teal-400'
+                }`}
+              />
+              <span>Dashboard</span>
+            </div>
+            <span className="text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded bg-teal-500/20 text-teal-300 border border-teal-500/30">
+              Live
+            </span>
+          </button>
         </div>
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = currentTab === item.id;
-          return (
-            <button
-              key={item.id}
-              id={`nav-tab-${item.id}`}
-              onClick={() => onSelectTab(item.id)}
-              className={`w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-medium transition-all duration-150 group ${
-                isActive
-                  ? 'bg-teal-600 text-white shadow-md shadow-teal-900/30'
-                  : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
-              }`}
-            >
-              <div className="flex items-center space-x-3.5">
-                <Icon
-                  className={`w-5 h-5 transition-colors ${
-                    isActive ? 'text-white' : 'text-slate-400 group-hover:text-teal-400'
-                  }`}
-                />
-                <span>{item.label}</span>
-              </div>
 
-              {item.badge && (
-                <span
-                  className={`px-2 py-0.5 text-[11px] font-bold rounded-full ${
-                    item.badgeColor || 'bg-slate-700 text-white'
-                  }`}
-                  title={`${item.badge} notifications`}
-                >
-                  {item.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
+        {/* CORE OPERATIONS */}
+        <div className="space-y-1">
+          <div className="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+            Core Operations
+          </div>
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = currentTab === item.id;
+            return (
+              <button
+                key={item.id}
+                id={`nav-tab-${item.id}`}
+                onClick={() => onSelectTab(item.id)}
+                className={`w-full flex items-center justify-between px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 group cursor-pointer ${
+                  isActive
+                    ? 'bg-teal-600 text-white shadow-md shadow-teal-900/30'
+                    : 'text-slate-300 hover:bg-slate-800/80 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center space-x-3.5">
+                  <Icon
+                    className={`w-5 h-5 transition-colors ${
+                      isActive ? 'text-white' : 'text-slate-400 group-hover:text-teal-400'
+                    }`}
+                  />
+                  <span>{item.label}</span>
+                </div>
+
+                {item.badge && (
+                  <span
+                    className={`px-2 py-0.5 text-[11px] font-bold rounded-full ${
+                      item.badgeColor || 'bg-slate-700 text-white'
+                    }`}
+                    title={`${item.badge} notifications`}
+                  >
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Reorder Summary Quick Alert Banner in Sidebar */}
