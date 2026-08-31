@@ -189,3 +189,46 @@ export interface PurchaseRecord {
   notes?: string;
   createdAt?: string;
 }
+
+export type RetrieveItemCondition =
+  | 'Good / Unused'
+  | 'Excess Material'
+  | 'Used / Functional'
+  | 'Needs Repair'
+  | 'Damaged / Scrap'
+  | 'Good'
+  | 'Excess'
+  | 'Damaged'
+  | 'Used';
+
+export interface RetrieveItemLine {
+  itemId: string;
+  assetId: string;
+  description: string;
+  category: ItemCategory;
+  quantity: number; // Quantity returned back to inventory
+  unit: string;
+  unitPrice?: number;
+  condition?: RetrieveItemCondition;
+  remarks?: string;
+}
+
+export interface RetrieveTicket {
+  id: string; // e.g. "RET-2026-001" or "DSI-RET-001"
+  projectId: string;
+  projectName: string;
+  projectLocation?: string;
+  location?: string;
+  retrievedBy: string; // Sino nagbalik galing sa site / Project In-charge
+  receivedBy: string; // Sino tumanggap sa bodega (e.g. M' Chrissna / Maricel)
+  returnedTo?: string; // e.g. "Lumiere Main Warehouse", "Tool Room #2"
+  returnedToWarehouse?: string;
+  reasonForReturn?: string;
+  date: string; // YYYY-MM-DD
+  items: RetrieveItemLine[];
+  totalQuantity: number;
+  totalValue?: number;
+  notes?: string;
+  createdAt: string;
+}
+

@@ -27,6 +27,7 @@ import {
   InventoryItem,
   PullOutTicket,
   DeploymentTicket,
+  RetrieveTicket,
   TabType,
 } from '../types';
 import { formatCurrency } from '../utils/inventoryHelpers';
@@ -38,6 +39,7 @@ interface DashboardViewProps {
   items: InventoryItem[];
   pullOutTickets: PullOutTicket[];
   deploymentTickets: DeploymentTicket[];
+  retrieveTickets?: RetrieveTicket[];
   onNavigateTab: (tab: TabType) => void;
   onOpenAddProjectModal: () => void;
   onUpdateProject?: (updatedProject: Project) => void;
@@ -48,6 +50,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   items,
   pullOutTickets,
   deploymentTickets,
+  retrieveTickets = [],
   onNavigateTab,
   onOpenAddProjectModal,
   onUpdateProject,
@@ -61,7 +64,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     const pId = (proj.id || '').trim().toLowerCase();
     const pName = (proj.name || '').trim().toLowerCase();
 
-    // 1. Pull Out Materials Cost
+    // 1. Pull Out Materials Cost (Gross)
     const projPullOuts = pullOutTickets.filter((t) => {
       const tId = (t.projectId || '').trim().toLowerCase();
       const tName = (t.projectName || '').trim().toLowerCase();
@@ -73,8 +76,20 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       );
     });
 
-    let materialCost = 0;
-    let materialUnits = 0;
+    // 2. Retrieve / Returned Materials for this project
+    const projRetrieves = retrieveTickets.filter((t) => {
+      const tId = (t.projectId || '').trim().toLowerCase();
+      const tName = (t.projectName || '').trim().toLowerCase();
+      return (
+        (tId && tId === pId) ||
+        (tName && tName === pName) ||
+        (tId && tId === pName) ||
+        (tName && tName === pId)
+      );
+    });
+
+    let grossMaterialCost = 0;
+    let grossMaterialUnits = 0;
     projPullOuts.forEach((ticket) => {
       ticket.items.forEach((item) => {
         let price = item.unitPrice || 0;
@@ -87,13 +102,13 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           );
           if (inv && inv.unitPrice) price = inv.unitPrice;
         }
-        materialCost += item.quantity * price;
-        materialUnits += item.quantity;
+        grossMaterialCost += item.quantity * price;
+        grossMaterialUnits += item.quantity;
       });
     });
 
     // Fallback: direct inventory allocations
-    if (materialCost === 0 && items.length > 0) {
+    if (grossMaterialCost === 0 && items.length > 0) {
       items.forEach((inv) => {
         if (inv.projectAllocations) {
           inv.projectAllocations.forEach((alloc) => {
@@ -106,15 +121,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
               (aName && aName === pId)
             ) {
               const price = inv.unitPrice || 0;
-              materialCost += alloc.quantity * price;
-              materialUnits += alloc.quantity;
+              grossMaterialCost += alloc.quantity * price;
+              grossMaterialUnits += alloc.quantity;
             }
           });
         }
       });
     }
 
-    // 2. Deployments: Labor Cost & Mobilization Cost
+    let retrievedMaterialCost = 0;
+    let retrievedUnits = 0;
+    projRetrieves.forEach((ticket) => {
+      ticket.items.forEach((item) => {
+        let price = item.unitPrice || 0;
+        if (price === 0 && items.length > 0) {
+          const inv = items.find(
+            (i) =>
+              (item.itemId && i.id.toLowerCase() === item.itemId.toLowerCase()) ||
+              (item.assetId && i.assetId.toLowerCase() === item.assetId.toLowerCase()) ||
+              (item.description && i.description.toLowerCase() === item.description.toLowerCase())
+          );
+          if (inv && inv.unitPrice) price = inv.unitPrice;
+        }
+        retrievedMaterialCost += item.quantity * price;
+        retrievedUnits += item.quantity;
+      });
+    });
+
+    const netMaterialCost = Math.max(0, grossMaterialCost - retrievedMaterialCost);
+    const netMaterialUnits = Math.max(0, grossMaterialUnits - retrievedUnits);
+
+    // 3. Deployments: Labor Cost & Mobilization Cost
     const projDeployments = deploymentTickets.filter((t) => {
       const tId = (t.projectId || '').trim().toLowerCase();
       const tName = (t.projectName || '').trim().toLowerCase();
@@ -136,7 +173,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       headsDeployed += dep.lines.reduce((acc, l) => acc + (l.quantity || 0), 0);
     });
 
-    const totalProjectCost = materialCost + laborCost + mobilizationCost;
+    const totalProjectCost = netMaterialCost + laborCost + mobilizationCost;
     const progress = calculateProjectProgress(proj);
     const totalWindowsDoors = (proj.windowsDoors || []).reduce(
       (acc, curr) => acc + (Number(curr.qty) || 1),
@@ -145,21 +182,29 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
 
     return {
       project: proj,
-      materialCost,
-      materialUnits,
+      grossMaterialCost,
+      retrievedMaterialCost,
+      netMaterialCost,
+      materialCost: netMaterialCost,
+      grossMaterialUnits,
+      retrievedUnits,
+      netMaterialUnits,
+      materialUnits: netMaterialUnits,
       laborCost,
       mobilizationCost,
       totalProjectCost,
       progress,
       totalWindowsDoors,
       pullOutCount: projPullOuts.length,
+      retrieveCount: projRetrieves.length,
       deploymentCount: projDeployments.length,
       headsDeployed,
     };
   });
 
   // Overall Company Grand Totals
-  const grandTotalMaterials = projectSummaries.reduce((acc, curr) => acc + curr.materialCost, 0);
+  const grandTotalMaterials = projectSummaries.reduce((acc, curr) => acc + curr.netMaterialCost, 0);
+  const grandTotalRetrieved = projectSummaries.reduce((acc, curr) => acc + curr.retrievedMaterialCost, 0);
   const grandTotalLabor = projectSummaries.reduce((acc, curr) => acc + curr.laborCost, 0);
   const grandTotalMobilization = projectSummaries.reduce((acc, curr) => acc + curr.mobilizationCost, 0);
   const grandTotalAllCosts = grandTotalMaterials + grandTotalLabor + grandTotalMobilization;
@@ -238,7 +283,15 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             {formatCurrency(grandTotalMaterials)}
           </div>
           <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
-            <span>Across all active pull-outs</span>
+            <span>
+              {grandTotalRetrieved > 0 ? (
+                <span className="text-emerald-700 font-bold">
+                  -{formatCurrency(grandTotalRetrieved)} returned
+                </span>
+              ) : (
+                'Across all active pull-outs'
+              )}
+            </span>
             <span className="font-semibold text-blue-700">
               {grandTotalAllCosts > 0
                 ? `${Math.round((grandTotalMaterials / grandTotalAllCosts) * 100)}% of total`
@@ -554,6 +607,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         project={selectedProjectForDetails}
         pullOutTickets={pullOutTickets}
         deploymentTickets={deploymentTickets}
+        retrieveTickets={retrieveTickets}
         inventoryItems={items}
         onUpdateProject={(updated) => {
           if (onUpdateProject) onUpdateProject(updated);

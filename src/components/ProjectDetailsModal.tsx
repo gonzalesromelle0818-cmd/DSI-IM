@@ -27,12 +27,16 @@ import {
   Square,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   LayoutGrid,
   Trash2,
   Edit2,
   Save,
   AlertCircle,
   Percent,
+  RotateCcw,
+  Warehouse,
+  Download,
 } from 'lucide-react';
 import {
   Project,
@@ -41,9 +45,11 @@ import {
   InventoryItem,
   WindowDoorItem,
   ProjectMilestone,
+  RetrieveTicket,
 } from '../types';
 import { formatCurrency } from '../utils/inventoryHelpers';
 import { generateProjectCostPDF } from '../utils/generateProjectCostPDF';
+import { generateRetrievePDF } from '../utils/generateRetrievePDF';
 import {
   calculateProjectProgress,
   getInitialProjectChecklist,
@@ -56,9 +62,11 @@ interface ProjectDetailsModalProps {
   project: Project | null;
   pullOutTickets: PullOutTicket[];
   deploymentTickets: DeploymentTicket[];
+  retrieveTickets?: RetrieveTicket[];
   inventoryItems: InventoryItem[];
   onOpenAddPullOutForProject?: (projectId: string) => void;
   onOpenAddDeploymentForProject?: (projectId: string) => void;
+  onOpenAddRetrieveForProject?: (projectId: string) => void;
   onUpdateProject?: (updatedProject: Project) => void;
 }
 
@@ -68,15 +76,20 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
   project,
   pullOutTickets,
   deploymentTickets,
+  retrieveTickets = [],
   inventoryItems,
   onOpenAddPullOutForProject,
   onOpenAddDeploymentForProject,
+  onOpenAddRetrieveForProject,
   onUpdateProject,
 }) => {
-  const [activeTab, setActiveTab] = useState<'checklist' | 'windows_doors' | 'overview' | 'materials' | 'manpower' | 'report'>('checklist');
+  const [activeTab, setActiveTab] = useState<'checklist' | 'windows_doors' | 'overview' | 'materials' | 'manpower' | 'retrieved' | 'report'>('checklist');
   const [materialSearch, setMaterialSearch] = useState('');
   const [materialCategoryFilter, setMaterialCategoryFilter] = useState('all');
   const [deploymentSearch, setDeploymentSearch] = useState('');
+  const [retrieveSearch, setRetrieveSearch] = useState('');
+  const [expandedRetrieveId, setExpandedRetrieveId] = useState<string | null>(null);
+
   
   // Accordion toggle for Milestone #9 Windows/Doors dropdown
   const [isMilestone9Expanded, setIsMilestone9Expanded] = useState(true);
@@ -130,6 +143,39 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
       (tName && tName === pId)
     );
   });
+
+  // Filter Retrieve tickets for this project
+  const projectRetrieves = (retrieveTickets || []).filter((t) => {
+    const tId = (t.projectId || '').trim().toLowerCase();
+    const tName = (t.projectName || '').trim().toLowerCase();
+    return (
+      (tId && tId === pId) ||
+      (tName && tName === pName) ||
+      (tId && tId === pName) ||
+      (tName && tName === pId)
+    );
+  });
+
+  const totalRetrievedUnits = projectRetrieves.reduce(
+    (sum, t) => sum + t.items.reduce((s, i) => s + (i.quantity || 0), 0),
+    0
+  );
+
+  const totalRetrievedValue = projectRetrieves.reduce((sum, t) => {
+    return (
+      sum +
+      t.items.reduce((s, line) => {
+        const invMatch = inventoryItems.find(
+          (inv) =>
+            inv.id === line.itemId ||
+            (inv.assetId && inv.assetId === line.assetId) ||
+            inv.description.toLowerCase() === line.description.toLowerCase()
+        );
+        const price = line.unitPrice || invMatch?.unitPrice || 0;
+        return s + line.quantity * price;
+      }, 0)
+    );
+  }, 0);
 
   // Flatten material items
   interface FlatMaterialItem {
@@ -234,10 +280,12 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
   });
 
   const totalDeploymentCost = totalLaborCost + totalMobilizationCost;
-  const grandTotalCost = totalMaterialCost + totalDeploymentCost;
+  const netMaterialCost = Math.max(0, totalMaterialCost - totalRetrievedValue);
+  const netMaterialUnits = Math.max(0, totalMaterialUnits - totalRetrievedUnits);
+  const grandTotalCost = netMaterialCost + totalDeploymentCost;
 
   // Percentage calculations
-  const matPercent = grandTotalCost > 0 ? Math.round((totalMaterialCost / grandTotalCost) * 100) : 0;
+  const matPercent = grandTotalCost > 0 ? Math.round((netMaterialCost / grandTotalCost) * 100) : 0;
   const laborPercent = grandTotalCost > 0 ? Math.round((totalLaborCost / grandTotalCost) * 100) : 0;
   const mobPercent = grandTotalCost > 0 ? Math.round((totalMobilizationCost / grandTotalCost) * 100) : 0;
 
@@ -380,6 +428,7 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
       project,
       pullOutTickets,
       deploymentTickets,
+      retrieveTickets,
       inventoryItems,
       preparedBy: "M' Chrissna / Maricel",
       supervisor: project.leadPerson,
@@ -505,17 +554,25 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
 
         {/* Financial Highlights KPI Strip */}
         <div className="bg-slate-50 border-b border-slate-200 px-5 sm:px-6 py-3.5 grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* Card 1: Materials Pull Out Cost */}
+          {/* Card 1: Materials Pull Out Cost (Net) */}
           <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
             <div className="flex items-center justify-between text-slate-500 mb-0.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider">Materials Pulled Out</span>
+              <span className="text-[10px] font-bold uppercase tracking-wider">
+                {totalRetrievedValue > 0 ? 'Net Materials' : 'Materials Pulled Out'}
+              </span>
               <PackageOpen className="w-4 h-4 text-blue-600" />
             </div>
             <div className="text-base font-extrabold text-slate-900">
-              {formatCurrency(totalMaterialCost)}
+              {formatCurrency(netMaterialCost)}
             </div>
             <div className="text-[11px] text-slate-500">
-              {totalMaterialUnits} unit(s) • {projectPullOuts.length} ticket(s)
+              {totalRetrievedValue > 0 ? (
+                <span className="text-emerald-700 font-semibold">
+                  -{formatCurrency(totalRetrievedValue)} returned ({totalRetrievedUnits}u)
+                </span>
+              ) : (
+                `${totalMaterialUnits} unit(s) • ${projectPullOuts.length} ticket(s)`
+              )}
             </div>
           </div>
 
@@ -623,6 +680,18 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
             >
               <HardHat className="w-4 h-4 text-slate-600" />
               <span>Manpower Deployments ({projectDeployments.length})</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('retrieved')}
+              className={`px-3 py-2 text-xs font-bold border-b-2 transition-all flex items-center space-x-1.5 whitespace-nowrap cursor-pointer ${
+                activeTab === 'retrieved'
+                  ? 'border-emerald-600 text-emerald-800 bg-emerald-50/70 rounded-t-lg'
+                  : 'border-transparent text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+              }`}
+            >
+              <RotateCcw className="w-4 h-4 text-emerald-600" />
+              <span>Retrieved Items ({projectRetrieves.length})</span>
             </button>
 
             <button
@@ -1086,12 +1155,12 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
               </div>
 
               {/* Quick Actions Panel */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
                   <div className="space-y-1.5">
                     <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                       <PackageOpen className="w-4 h-4 text-blue-600" />
-                      <span>Pull Out More Materials</span>
+                      <span>Pull Out Materials</span>
                     </h4>
                     <p className="text-xs text-slate-500">
                       Allocate additional tools, screws, or consumables from warehouse inventory for this project site.
@@ -1107,7 +1176,7 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
                     className="mt-4 w-full py-2.5 px-4 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-lg border border-blue-200 transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Create Pull-Out for {project.name}</span>
+                    <span>Create Pull-Out</span>
                   </button>
                 </div>
 
@@ -1115,7 +1184,7 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
                   <div className="space-y-1.5">
                     <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                       <HardHat className="w-4 h-4 text-teal-600" />
-                      <span>Deploy Manpower & Transpo</span>
+                      <span>Deploy Manpower</span>
                     </h4>
                     <p className="text-xs text-slate-500">
                       Schedule supervisors, installers, and laborers along with mobilization logistics.
@@ -1131,7 +1200,31 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
                     className="mt-4 w-full py-2.5 px-4 bg-teal-50 hover:bg-teal-100 text-teal-700 font-bold text-xs rounded-lg border border-teal-200 transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>Create Deployment Ticket</span>
+                    <span>Create Deployment</span>
+                  </button>
+                </div>
+
+                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs flex flex-col justify-between">
+                  <div className="space-y-1.5">
+                    <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                      <RotateCcw className="w-4 h-4 text-emerald-600" />
+                      <span>Retrieve Surplus Items</span>
+                    </h4>
+                    <p className="text-xs text-slate-500">
+                      Return unused excess items, materials, or tools back to warehouse inventory stock.
+                    </p>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      if (onOpenAddRetrieveForProject) {
+                        onOpenAddRetrieveForProject(project.id);
+                      }
+                    }}
+                    className="mt-4 w-full py-2.5 px-4 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 font-bold text-xs rounded-lg border border-emerald-200 transition-colors flex items-center justify-center space-x-1.5 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Retrieve Surplus Items</span>
                   </button>
                 </div>
               </div>
@@ -1260,7 +1353,190 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
             </div>
           )}
 
-          {/* TAB 6: PRINTABLE REPORT / PDF */}
+          {/* TAB 6: RETRIEVED / RETURNED ITEMS */}
+          {activeTab === 'retrieved' && (
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="relative flex-1 min-w-[200px]">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={retrieveSearch}
+                    onChange={(e) => setRetrieveSearch(e.target.value)}
+                    placeholder="Search retrieved items or slip #..."
+                    className="w-full pl-9 pr-4 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="text-xs font-bold text-slate-700 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
+                    Restored Units: <span className="text-emerald-700">{totalRetrievedUnits} pcs</span>
+                  </div>
+                  {totalRetrievedValue > 0 && (
+                    <div className="text-xs font-bold text-slate-700 bg-white px-3 py-1.5 rounded-lg border border-slate-200">
+                      Restored Value: <span className="text-emerald-700 font-mono">{formatCurrency(totalRetrievedValue)}</span>
+                    </div>
+                  )}
+                  {onOpenAddRetrieveForProject && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenAddRetrieveForProject(project.id)}
+                      className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs transition-colors flex items-center space-x-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Retrieve Items</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {projectRetrieves.length === 0 ? (
+                <div className="bg-white p-10 rounded-xl border border-dashed border-slate-300 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto">
+                    <RotateCcw className="w-6 h-6" />
+                  </div>
+                  <h4 className="text-sm font-bold text-slate-800">Walang Naibalik na Gamit Para sa Project na Ito</h4>
+                  <p className="text-xs text-slate-500 max-w-md mx-auto">
+                    Kung may sobra o hindi nagamit na materyales o pull-out tools galing sa site, pindutin ang <strong>"Retrieve Items"</strong> upang maibalik ang stock sa bodega.
+                  </p>
+                  {onOpenAddRetrieveForProject && (
+                    <button
+                      type="button"
+                      onClick={() => onOpenAddRetrieveForProject(project.id)}
+                      className="px-4 py-2 text-xs font-bold text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 rounded-lg transition-colors cursor-pointer inline-flex items-center space-x-1.5"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>Gumawa ng Retrieve Slip Para sa Project na Ito</span>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {projectRetrieves
+                    .filter((ticket) => {
+                      const q = retrieveSearch.toLowerCase();
+                      if (!q) return true;
+                      return (
+                        ticket.id.toLowerCase().includes(q) ||
+                        ticket.retrievedBy.toLowerCase().includes(q) ||
+                        ticket.receivedBy.toLowerCase().includes(q) ||
+                        ticket.date.includes(q) ||
+                        ticket.items.some(
+                          (item) =>
+                            item.description.toLowerCase().includes(q) ||
+                            (item.assetId && item.assetId.toLowerCase().includes(q)) ||
+                            (item.remarks && item.remarks.toLowerCase().includes(q))
+                        )
+                      );
+                    })
+                    .map((ticket) => {
+                      const isExpanded = expandedRetrieveId === ticket.id;
+                      const ticketUnits = ticket.items.reduce((s, i) => s + (i.quantity || 0), 0);
+                      const ticketVal = ticket.items.reduce((sum, line) => {
+                        const invMatch = inventoryItems.find(
+                          (inv) =>
+                            inv.id === line.itemId ||
+                            (inv.assetId && inv.assetId === line.assetId) ||
+                            inv.description.toLowerCase() === line.description.toLowerCase()
+                        );
+                        const price = line.unitPrice || invMatch?.unitPrice || 0;
+                        return sum + line.quantity * price;
+                      }, 0);
+
+                      return (
+                        <div
+                          key={ticket.id}
+                          className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden"
+                        >
+                          <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <div className="flex items-start space-x-3">
+                              <div className="p-2 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0 mt-0.5">
+                                <RotateCcw className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <div className="flex items-center space-x-2">
+                                  <span className="font-mono text-xs font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                                    {ticket.id}
+                                  </span>
+                                  <span className="text-xs text-slate-600">
+                                    Date: <strong>{ticket.date}</strong> • Returned To: <strong>{ticket.returnedToWarehouse || ticket.returnedTo || 'Bodega'}</strong>
+                                  </span>
+                                </div>
+                                <div className="text-[11px] text-slate-500 mt-1">
+                                  Retrieved By: <strong>{ticket.retrievedBy}</strong> • Received By: <strong>{ticket.receivedBy}</strong> • {ticket.items.length} line items ({ticketUnits} pcs)
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center space-x-2 shrink-0">
+                              {ticketVal > 0 && (
+                                <span className="text-xs font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-1 rounded-md border border-emerald-200">
+                                  {formatCurrency(ticketVal)}
+                                </span>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={() => setExpandedRetrieveId(isExpanded ? null : ticket.id)}
+                                className="px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 flex items-center space-x-1 cursor-pointer"
+                              >
+                                <span>{isExpanded ? 'Hide' : 'View'}</span>
+                                {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => generateRetrievePDF({ ticket, project })}
+                                className="px-3 py-1.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-2xs transition-colors flex items-center space-x-1 cursor-pointer"
+                                title="Download Material Return Slip PDF"
+                              >
+                                <Download className="w-3.5 h-3.5" />
+                                <span>PDF</span>
+                              </button>
+                            </div>
+                          </div>
+
+                          {isExpanded && (
+                            <div className="px-4 pb-4 pt-2 bg-slate-50 border-t border-slate-200">
+                              <table className="w-full text-left text-xs border-collapse bg-white rounded-lg border border-slate-200 overflow-hidden">
+                                <thead>
+                                  <tr className="bg-slate-100 text-slate-700 text-[11px]">
+                                    <th className="py-2 px-3 font-bold">#</th>
+                                    <th className="py-2 px-3 font-bold">Asset ID</th>
+                                    <th className="py-2 px-3 font-bold">Description</th>
+                                    <th className="py-2 px-3 font-bold text-center">Qty Returned</th>
+                                    <th className="py-2 px-3 font-bold">Condition</th>
+                                    <th className="py-2 px-3 font-bold">Remarks</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                  {ticket.items.map((item, idx) => (
+                                    <tr key={idx} className="hover:bg-slate-50/80">
+                                      <td className="py-1.5 px-3 text-slate-400 font-mono text-[11px]">{idx + 1}</td>
+                                      <td className="py-1.5 px-3 font-mono text-emerald-800 font-semibold">{item.assetId || '-'}</td>
+                                      <td className="py-1.5 px-3 font-medium text-slate-900">{item.description}</td>
+                                      <td className="py-1.5 px-3 text-center font-bold text-emerald-900 font-mono">+{item.quantity} {item.unit || 'pcs'}</td>
+                                      <td className="py-1.5 px-3">
+                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                                          {item.condition || 'Good'}
+                                        </span>
+                                      </td>
+                                      <td className="py-1.5 px-3 text-slate-500 text-[11px]">{item.remarks || '-'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB 7: PRINTABLE REPORT / PDF */}
           {activeTab === 'report' && (
             <div className="space-y-4">
               <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-2xs space-y-4">

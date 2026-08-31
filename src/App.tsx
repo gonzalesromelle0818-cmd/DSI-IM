@@ -7,6 +7,7 @@ import {
   DeploymentTicket,
   ManpowerPositionRate,
   PurchaseRecord,
+  RetrieveTicket,
 } from './types';
 import { INITIAL_INVENTORY } from './data/mockInventory';
 import { INITIAL_PROJECTS } from './data/initialProjects';
@@ -30,6 +31,8 @@ import { AddPullOutModal } from './components/AddPullOutModal';
 import { RemovePullOutModal } from './components/RemovePullOutModal';
 import { AddDeploymentModal } from './components/AddDeploymentModal';
 import { RemoveDeploymentModal } from './components/RemoveDeploymentModal';
+import { AddRetrieveModal } from './components/AddRetrieveModal';
+import { RemoveRetrieveModal } from './components/RemoveRetrieveModal';
 import { ManageManpowerModal } from './components/ManageManpowerModal';
 
 const STORAGE_KEY = 'dsi_inventory_data_v2_user';
@@ -38,6 +41,7 @@ const PULLOUT_STORAGE_KEY = 'dsi_inventory_pullouts_v1';
 const DEPLOYMENT_STORAGE_KEY = 'dsi_inventory_deployment_v1';
 const MANPOWER_RATES_STORAGE_KEY = 'dsi_inventory_manpower_rates_v1';
 const PURCHASES_STORAGE_KEY = 'dsi_inventory_purchases_v1';
+const RETRIEVE_STORAGE_KEY = 'dsi_inventory_retrieves_v1';
 
 const INITIAL_PURCHASES: PurchaseRecord[] = [
   {
@@ -198,6 +202,19 @@ export default function App() {
     return INITIAL_PURCHASES;
   });
 
+  // Retrieve Tickets state (returns from project sites back to inventory)
+  const [retrieveTickets, setRetrieveTickets] = useState<RetrieveTicket[]>(() => {
+    try {
+      const saved = localStorage.getItem(RETRIEVE_STORAGE_KEY);
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.error('Failed to parse saved retrieve tickets', e);
+    }
+    return [];
+  });
+
   // Save to localStorage on change
   useEffect(() => {
     try {
@@ -247,6 +264,14 @@ export default function App() {
     }
   }, [purchases]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(RETRIEVE_STORAGE_KEY, JSON.stringify(retrieveTickets));
+    } catch (e) {
+      console.error('Failed to save retrieve tickets', e);
+    }
+  }, [retrieveTickets]);
+
   // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
@@ -256,9 +281,12 @@ export default function App() {
   const [isRemovePullOutModalOpen, setIsRemovePullOutModalOpen] = useState(false);
   const [isAddDeploymentModalOpen, setIsAddDeploymentModalOpen] = useState(false);
   const [isRemoveDeploymentModalOpen, setIsRemoveDeploymentModalOpen] = useState(false);
+  const [isAddRetrieveModalOpen, setIsAddRetrieveModalOpen] = useState(false);
+  const [isRemoveRetrieveModalOpen, setIsRemoveRetrieveModalOpen] = useState(false);
   const [isManageRatesModalOpen, setIsManageRatesModalOpen] = useState(false);
   const [preselectedRestockItemId, setPreselectedRestockItemId] = useState<string | null>(null);
   const [preselectedPullOutProjectId, setPreselectedPullOutProjectId] = useState<string | null>(null);
+  const [preselectedRetrieveProjectId, setPreselectedRetrieveProjectId] = useState<string | null>(null);
 
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [detailsItem, setDetailsItem] = useState<InventoryItem | null>(null);
@@ -643,6 +671,111 @@ export default function App() {
     ticketIds.forEach((id) => handleDeletePullOut(id, returnStock));
   };
 
+  // Retrieve Tickets Handlers (Return surplus/unused items from site back to inventory)
+  const handleAddRetrieveTicket = (ticket: RetrieveTicket) => {
+    // 1. Add ticket to state
+    setRetrieveTickets((prev) => [ticket, ...prev]);
+
+    // 2. Restore item quantities back into warehouse stock and reduce project allocations
+    setItems((prevItems) => {
+      const addMap = new Map<string, number>();
+      ticket.items.forEach((line) => {
+        if (line.itemId) {
+          addMap.set(line.itemId.trim().toLowerCase(), (addMap.get(line.itemId.trim().toLowerCase()) || 0) + line.quantity);
+        }
+        if (line.assetId) {
+          addMap.set(line.assetId.trim().toLowerCase(), (addMap.get(line.assetId.trim().toLowerCase()) || 0) + line.quantity);
+        }
+      });
+
+      return prevItems.map((item) => {
+        const itemIdKey = (item.id || '').trim().toLowerCase();
+        const assetIdKey = (item.assetId || '').trim().toLowerCase();
+
+        let qtyToAdd = 0;
+        if (itemIdKey && addMap.has(itemIdKey)) {
+          qtyToAdd = addMap.get(itemIdKey)!;
+        } else if (assetIdKey && addMap.has(assetIdKey)) {
+          qtyToAdd = addMap.get(assetIdKey)!;
+        }
+
+        if (qtyToAdd > 0) {
+          const newStock = item.stockQty + qtyToAdd;
+
+          let allocations = [...(item.projectAllocations || [])];
+          const ticketPId = (ticket.projectId || '').trim().toLowerCase();
+          const ticketPName = (ticket.projectName || '').trim().toLowerCase();
+
+          const existingAllocIndex = allocations.findIndex((a) => {
+            const aId = (a.projectId || '').trim().toLowerCase();
+            const aName = (a.projectName || '').trim().toLowerCase();
+            return (
+              (aId && aId === ticketPId) ||
+              (aName && aName === ticketPName) ||
+              (aId && aId === ticketPName) ||
+              (aName && aName === ticketPId)
+            );
+          });
+
+          if (existingAllocIndex >= 0) {
+            const updatedQty = Math.max(0, allocations[existingAllocIndex].quantity - qtyToAdd);
+            if (updatedQty > 0) {
+              allocations[existingAllocIndex] = {
+                ...allocations[existingAllocIndex],
+                quantity: updatedQty,
+              };
+            } else {
+              allocations.splice(existingAllocIndex, 1);
+            }
+          }
+
+          return {
+            ...item,
+            stockQty: newStock,
+            projectAllocations: allocations,
+            lastUpdated: new Date().toISOString().slice(0, 10),
+            notes: `${item.notes ? item.notes + ' | ' : ''}Retrieved +${qtyToAdd} ${item.unit} from ${ticket.projectName} (${ticket.id})`,
+          };
+        }
+        return item;
+      });
+    });
+  };
+
+  const handleDeleteRetrieveTicket = (ticketId: string, revertStock: boolean) => {
+    const ticket = retrieveTickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+
+    if (revertStock) {
+      setItems((prevItems) => {
+        const lineMap = new Map<string, number>();
+        ticket.items.forEach((line) => {
+          lineMap.set(line.itemId, (lineMap.get(line.itemId) || 0) + line.quantity);
+        });
+
+        return prevItems.map((item) => {
+          if (lineMap.has(item.id)) {
+            const qtyToDeduct = lineMap.get(item.id)!;
+            const newStock = Math.max(0, item.stockQty - qtyToDeduct);
+            return {
+              ...item,
+              stockQty: newStock,
+              lastUpdated: new Date().toISOString().slice(0, 10),
+              notes: `${item.notes ? item.notes + ' | ' : ''}Reverted retrieve ${ticket.id}, -${qtyToDeduct} ${item.unit}`,
+            };
+          }
+          return item;
+        });
+      });
+    }
+
+    setRetrieveTickets((prev) => prev.filter((t) => t.id !== ticketId));
+  };
+
+  const handleDeleteMultipleRetrieveTickets = (ticketIds: string[], revertStock: boolean) => {
+    ticketIds.forEach((id) => handleDeleteRetrieveTicket(id, revertStock));
+  };
+
   const handleReturnStock = (itemId: string, projectId: string, quantityToReturn: number) => {
     setItems((prev) =>
       prev.map((item) => {
@@ -768,6 +901,7 @@ export default function App() {
               items={items}
               pullOutTickets={pullOutTickets}
               deploymentTickets={deploymentTickets}
+              retrieveTickets={retrieveTickets}
               onNavigateTab={(tab) => setCurrentTab(tab)}
               onOpenAddProjectModal={() => {
                 setCurrentTab('projects');
@@ -825,6 +959,7 @@ export default function App() {
               items={items}
               pullOutTickets={pullOutTickets}
               deploymentTickets={deploymentTickets}
+              retrieveTickets={retrieveTickets}
               onOpenAddProjectModal={() => setIsAddProjectModalOpen(true)}
               onOpenRemoveProjectModal={() => setIsRemoveProjectModalOpen(true)}
               onDeleteProject={handleDeleteProject}
@@ -836,6 +971,17 @@ export default function App() {
               onOpenAddDeploymentForProject={(pId) => {
                 setIsAddDeploymentModalOpen(true);
               }}
+              onOpenAddRetrieveForProject={(pId) => {
+                setPreselectedRetrieveProjectId(pId);
+                setIsAddRetrieveModalOpen(true);
+              }}
+              onOpenAddRetrieveModal={() => {
+                setPreselectedRetrieveProjectId(null);
+                setIsAddRetrieveModalOpen(true);
+              }}
+              onOpenRemoveRetrieveModal={() => setIsRemoveRetrieveModalOpen(true)}
+              onDeleteRetrieveTicket={handleDeleteRetrieveTicket}
+              onDeleteMultipleRetrieveTickets={handleDeleteMultipleRetrieveTickets}
               onUpdateProject={handleUpdateProject}
             />
           )}
@@ -945,6 +1091,31 @@ export default function App() {
         tickets={deploymentTickets}
         onDeleteTicket={handleDeleteDeployment}
         onDeleteMultipleTickets={handleDeleteMultipleDeployments}
+      />
+
+      {/* Add Retrieve Modal */}
+      <AddRetrieveModal
+        isOpen={isAddRetrieveModalOpen}
+        onClose={() => {
+          setIsAddRetrieveModalOpen(false);
+          setPreselectedRetrieveProjectId(null);
+        }}
+        projects={projects}
+        inventoryItems={items}
+        pullOutTickets={pullOutTickets}
+        existingRetrieveTickets={retrieveTickets}
+        onAddRetrieveTicket={handleAddRetrieveTicket}
+        existingTickets={retrieveTickets}
+        preselectedProjectId={preselectedRetrieveProjectId}
+      />
+
+      {/* Remove Retrieve Modal */}
+      <RemoveRetrieveModal
+        isOpen={isRemoveRetrieveModalOpen}
+        onClose={() => setIsRemoveRetrieveModalOpen(false)}
+        tickets={retrieveTickets}
+        onDeleteTicket={handleDeleteRetrieveTicket}
+        onDeleteMultipleTickets={handleDeleteMultipleRetrieveTickets}
       />
 
       {/* Manage Manpower Rates Modal */}

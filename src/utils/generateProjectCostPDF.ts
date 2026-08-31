@@ -1,12 +1,12 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Project, PullOutTicket, DeploymentTicket, InventoryItem } from '../types';
-import { formatCurrency } from './inventoryHelpers';
+import { Project, PullOutTicket, DeploymentTicket, RetrieveTicket, InventoryItem } from '../types';
 
 interface ProjectCostPDFOptions {
   project: Project;
   pullOutTickets: PullOutTicket[];
   deploymentTickets: DeploymentTicket[];
+  retrieveTickets?: RetrieveTicket[];
   inventoryItems?: InventoryItem[];
   preparedBy?: string;
   supervisor?: string;
@@ -17,16 +17,26 @@ export function generateProjectCostPDF({
   project,
   pullOutTickets,
   deploymentTickets,
+  retrieveTickets = [],
   inventoryItems = [],
-  preparedBy = "M' Chrissna / Maricel",
   supervisor = '',
-  projectManager = 'Engr. Roberto Santos',
 }: ProjectCostPDFOptions) {
   // Filter records for this project
   const pId = (project.id || '').trim().toLowerCase();
   const pName = (project.name || '').trim().toLowerCase();
 
   const relatedPullOuts = pullOutTickets.filter((t) => {
+    const tId = (t.projectId || '').trim().toLowerCase();
+    const tName = (t.projectName || '').trim().toLowerCase();
+    return (
+      (tId && tId === pId) ||
+      (tName && tName === pName) ||
+      (tId && tId === pName) ||
+      (tName && tName === pId)
+    );
+  });
+
+  const relatedRetrieves = retrieveTickets.filter((t) => {
     const tId = (t.projectId || '').trim().toLowerCase();
     const tName = (t.projectName || '').trim().toLowerCase();
     return (
@@ -62,12 +72,11 @@ export function generateProjectCostPDF({
   }
 
   const materialLines: MaterialLine[] = [];
-  let totalMaterialCost = 0;
-  let totalMaterialUnits = 0;
+  let grossMaterialCost = 0;
+  let grossMaterialUnits = 0;
 
   relatedPullOuts.forEach((ticket) => {
     ticket.items.forEach((item) => {
-      // Find unit price from item line or inventory masterlist
       let price = item.unitPrice || 0;
       if (price === 0 && inventoryItems.length > 0) {
         const invItem = inventoryItems.find(
@@ -81,8 +90,8 @@ export function generateProjectCostPDF({
         }
       }
       const lineCost = item.quantity * price;
-      totalMaterialCost += lineCost;
-      totalMaterialUnits += item.quantity;
+      grossMaterialCost += lineCost;
+      grossMaterialUnits += item.quantity;
 
       materialLines.push({
         date: ticket.date,
@@ -113,8 +122,8 @@ export function generateProjectCostPDF({
           ) {
             const price = invItem.unitPrice || 0;
             const lineCost = alloc.quantity * price;
-            totalMaterialCost += lineCost;
-            totalMaterialUnits += alloc.quantity;
+            grossMaterialCost += lineCost;
+            grossMaterialUnits += alloc.quantity;
 
             materialLines.push({
               date: alloc.allocatedDate || 'Recorded',
@@ -133,6 +142,57 @@ export function generateProjectCostPDF({
     });
   }
 
+  // Extract all retrieved item lines
+  interface RetrieveLine {
+    date: string;
+    ticketId: string;
+    assetId: string;
+    description: string;
+    quantity: number;
+    unit: string;
+    unitPrice: number;
+    totalCost: number;
+    condition: string;
+  }
+
+  const retrieveLines: RetrieveLine[] = [];
+  let totalRetrievedCost = 0;
+  let totalRetrievedUnits = 0;
+
+  relatedRetrieves.forEach((ticket) => {
+    ticket.items.forEach((item) => {
+      let price = item.unitPrice || 0;
+      if (price === 0 && inventoryItems.length > 0) {
+        const invItem = inventoryItems.find(
+          (i) =>
+            (item.itemId && i.id.toLowerCase() === item.itemId.toLowerCase()) ||
+            (item.assetId && i.assetId.toLowerCase() === item.assetId.toLowerCase()) ||
+            (item.description && i.description.toLowerCase() === item.description.toLowerCase())
+        );
+        if (invItem && invItem.unitPrice) {
+          price = invItem.unitPrice;
+        }
+      }
+      const lineVal = item.quantity * price;
+      totalRetrievedCost += lineVal;
+      totalRetrievedUnits += item.quantity;
+
+      retrieveLines.push({
+        date: ticket.date,
+        ticketId: ticket.id,
+        assetId: item.assetId,
+        description: item.description,
+        quantity: item.quantity,
+        unit: item.unit,
+        unitPrice: price,
+        totalCost: lineVal,
+        condition: item.condition,
+      });
+    });
+  });
+
+  const netMaterialCost = Math.max(0, grossMaterialCost - totalRetrievedCost);
+
   // Calculate manpower & mobilization costs
   let totalLaborCost = 0;
   let totalMobilizationCost = 0;
@@ -146,7 +206,7 @@ export function generateProjectCostPDF({
   });
 
   const totalDeploymentCost = totalLaborCost + totalMobilizationCost;
-  const grandTotalCost = totalMaterialCost + totalDeploymentCost;
+  const grandTotalCost = netMaterialCost + totalDeploymentCost;
 
   // Initialize PDF
   const doc = new jsPDF({
@@ -255,28 +315,44 @@ export function generateProjectCostPDF({
 
   currentY += 2;
 
-  const costSummaryRows = [
+  const costSummaryRows: string[][] = [
     [
-      'A. Materials & Inventory Pull-Out',
-      `${relatedPullOuts.length} ticket(s) / ${totalMaterialUnits} unit(s)`,
-      formatPHP(totalMaterialCost),
+      'A. Materials & Inventory Pull-Out (Gross)',
+      `${relatedPullOuts.length} ticket(s) / ${grossMaterialUnits} unit(s) dispatched`,
+      formatPHP(grossMaterialCost),
     ],
+  ];
+
+  if (totalRetrievedCost > 0) {
+    costSummaryRows.push([
+      'B. Returned / Retrieved to Warehouse (Credit)',
+      `${relatedRetrieves.length} retrieve ticket(s) / ${totalRetrievedUnits} unit(s) returned`,
+      `- ${formatPHP(totalRetrievedCost)}`,
+    ]);
+    costSummaryRows.push([
+      'C. Net Project Material Cost',
+      `Gross Material (A) less Warehouse Returns (B)`,
+      formatPHP(netMaterialCost),
+    ]);
+  }
+
+  costSummaryRows.push(
     [
-      'B. Manpower Labor Cost',
+      totalRetrievedCost > 0 ? 'D. Manpower Labor Cost' : 'B. Manpower Labor Cost',
       `${relatedDeployments.length} deployment(s) / ${totalHeadsDeployed} heads`,
       formatPHP(totalLaborCost),
     ],
     [
-      'C. Mobilization & Logistics Cost',
-      'Transportation, fuel & toll allowances',
+      totalRetrievedCost > 0 ? 'E. Mobilization & Logistics Cost' : 'C. Mobilization & Logistics Cost',
+      'Transportation, fuel & logistics allowances',
       formatPHP(totalMobilizationCost),
     ],
     [
       'GRAND TOTAL PROJECT EXPENSE',
-      'Total Dispatched Materials + Manpower Labor + Mobilization',
+      'Net Materials + Manpower Labor + Mobilization',
       formatPHP(grandTotalCost),
-    ],
-  ];
+    ]
+  );
 
   autoTable(doc, {
     startY: currentY,
@@ -297,8 +373,8 @@ export function generateProjectCostPDF({
       halign: 'left',
     },
     columnStyles: {
-      0: { cellWidth: 70, fontStyle: 'bold' },
-      1: { cellWidth: 75 },
+      0: { cellWidth: 72, fontStyle: 'bold' },
+      1: { cellWidth: 73 },
       2: { cellWidth: 41, halign: 'right', fontStyle: 'bold' },
     },
     didParseCell: (data) => {
@@ -372,11 +448,11 @@ export function generateProjectCostPDF({
           '',
           '',
           '',
-          'TOTAL MATERIAL COST',
-          `${totalMaterialUnits} units total`,
+          'GROSS MATERIAL COST',
+          `${grossMaterialUnits} units dispatched`,
           '',
           '',
-          formatPHP(totalMaterialCost),
+          formatPHP(grossMaterialCost),
         ],
       ],
       footStyles: {
@@ -390,8 +466,84 @@ export function generateProjectCostPDF({
     currentY = (doc as any).lastAutoTable.finalY + 7;
   }
 
-  // 5. MANPOWER DEPLOYMENTS TABLE
-  // Check if we need a new page
+  // 5. RETRIEVED / RETURNED MATERIALS TABLE (IF ANY)
+  if (retrieveLines.length > 0) {
+    if (currentY > 215) {
+      doc.addPage();
+      currentY = 16;
+    }
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(13, 148, 136); // teal-600
+    doc.text(`3. RETRIEVED / RETURNED TO WAREHOUSE (${retrieveLines.length} Item Records)`, marginX, currentY);
+
+    currentY += 2;
+
+    const retTableRows = retrieveLines.map((r, idx) => [
+      (idx + 1).toString(),
+      r.date,
+      r.ticketId,
+      r.assetId,
+      r.description,
+      `${r.quantity} ${r.unit}`,
+      r.condition,
+      formatPHP(r.totalCost),
+    ]);
+
+    autoTable(doc, {
+      startY: currentY,
+      head: [['#', 'Date', 'Ticket #', 'Asset Code', 'Description', 'Returned Qty', 'Condition', 'Restored Value']],
+      body: retTableRows,
+      theme: 'grid',
+      margin: { left: marginX, right: marginX },
+      styles: {
+        fontSize: 7.5,
+        cellPadding: 1.8,
+        textColor: [30, 41, 59],
+        valign: 'middle',
+      },
+      headStyles: {
+        fillColor: [13, 148, 136], // teal-600
+        textColor: [255, 255, 255],
+        fontStyle: 'bold',
+        fontSize: 7.5,
+      },
+      columnStyles: {
+        0: { cellWidth: 8, halign: 'center' },
+        1: { cellWidth: 18, halign: 'center' },
+        2: { cellWidth: 20, halign: 'center' },
+        3: { cellWidth: 22, fontStyle: 'bold' },
+        4: { cellWidth: 46 },
+        5: { cellWidth: 22, halign: 'center', fontStyle: 'bold' },
+        6: { cellWidth: 26 },
+        7: { cellWidth: 24, halign: 'right', fontStyle: 'bold' },
+      },
+      foot: [
+        [
+          '',
+          '',
+          '',
+          'TOTAL RESTORED VALUE',
+          `${totalRetrievedUnits} units returned`,
+          '',
+          '',
+          formatPHP(totalRetrievedCost),
+        ],
+      ],
+      footStyles: {
+        fillColor: [240, 253, 250],
+        textColor: [13, 148, 136],
+        fontStyle: 'bold',
+        fontSize: 8,
+      },
+    });
+
+    currentY = (doc as any).lastAutoTable.finalY + 7;
+  }
+
+  // 6. MANPOWER DEPLOYMENTS TABLE
+  const depSectionNum = retrieveLines.length > 0 ? '4' : '3';
   if (currentY > 215) {
     doc.addPage();
     currentY = 16;
@@ -400,7 +552,7 @@ export function generateProjectCostPDF({
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(`3. MANPOWER DEPLOYMENT HISTORY (${relatedDeployments.length} Deployments)`, marginX, currentY);
+  doc.text(`${depSectionNum}. MANPOWER DEPLOYMENT HISTORY (${relatedDeployments.length} Deployments)`, marginX, currentY);
 
   currentY += 2;
 
@@ -476,8 +628,7 @@ export function generateProjectCostPDF({
     currentY = (doc as any).lastAutoTable.finalY + 8;
   }
 
-  // 6. SYSTEM-GENERATED REPORT FOOTER & NOTICE
-  // Ensure enough room on the current page or add new page
+  // 7. SYSTEM-GENERATED REPORT FOOTER & NOTICE
   if (currentY > 260) {
     doc.addPage();
     currentY = 16;

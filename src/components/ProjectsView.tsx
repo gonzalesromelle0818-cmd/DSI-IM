@@ -18,6 +18,8 @@ import {
   PackageOpen,
   FileDown,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   TrendingUp,
   Lock,
   Eye,
@@ -27,11 +29,24 @@ import {
   LayoutGrid,
   CheckSquare,
   Percent,
+  RotateCcw,
+  Package,
+  FileText,
+  Warehouse,
+  Printer,
+  Download,
 } from 'lucide-react';
-import { Project, InventoryItem, PullOutTicket, DeploymentTicket } from '../types';
+import {
+  Project,
+  InventoryItem,
+  PullOutTicket,
+  DeploymentTicket,
+  RetrieveTicket,
+} from '../types';
 import { formatCurrency } from '../utils/inventoryHelpers';
 import { ProjectDetailsModal } from './ProjectDetailsModal';
 import { generateProjectCostPDF } from '../utils/generateProjectCostPDF';
+import { generateRetrievePDF } from '../utils/generateRetrievePDF';
 import { calculateProjectProgress } from '../utils/projectMilestones';
 
 interface ProjectsViewProps {
@@ -39,8 +54,14 @@ interface ProjectsViewProps {
   items: InventoryItem[];
   pullOutTickets?: PullOutTicket[];
   deploymentTickets?: DeploymentTicket[];
+  retrieveTickets?: RetrieveTicket[];
   onOpenAddProjectModal: () => void;
   onOpenRemoveProjectModal: () => void;
+  onOpenAddRetrieveModal?: (projectId?: string) => void;
+  onOpenRemoveRetrieveModal?: () => void;
+  onOpenAddRetrieveForProject?: (projectId: string) => void;
+  onDeleteRetrieveTicket?: (ticketId: string, rollbackStock: boolean) => void;
+  onDeleteMultipleRetrieveTickets?: (ticketIds: string[], rollbackStock: boolean) => void;
   onDeleteProject: (projectId: string) => void;
   onNavigateToInventory: () => void;
   onOpenAddPullOutForProject?: (projectId: string) => void;
@@ -55,8 +76,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   items,
   pullOutTickets = [],
   deploymentTickets = [],
+  retrieveTickets = [],
   onOpenAddProjectModal,
   onOpenRemoveProjectModal,
+  onOpenAddRetrieveModal,
+  onOpenRemoveRetrieveModal,
+  onOpenAddRetrieveForProject,
+  onDeleteRetrieveTicket,
+  onDeleteMultipleRetrieveTickets,
   onDeleteProject,
   onNavigateToInventory,
   onOpenAddPullOutForProject,
@@ -67,13 +94,19 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Planning' | 'Completed' | 'On Hold'>('all');
   const [selectedProjectForDetails, setSelectedProjectForDetails] = useState<Project | null>(null);
 
+  // Retrieve Tickets UI state in bottom section
+  const [retrieveSearch, setRetrieveSearch] = useState('');
+  const [retrieveProjectFilter, setRetrieveProjectFilter] = useState('all');
+  const [expandedRetrieveTicketId, setExpandedRetrieveTicketId] = useState<string | null>(null);
+
   // Card single project delete with password confirmation
   const [projectToSecureDelete, setProjectToSecureDelete] = useState<Project | null>(null);
   const [cardPasswordInput, setCardPasswordInput] = useState('');
   const [cardPasswordError, setCardPasswordError] = useState('');
   const [showCardPassword, setShowCardPassword] = useState(false);
 
-  // Calculate items deployed per project and total material expenses (from pullOutTickets & allocations)
+
+  // Calculate items deployed per project and total material expenses (from pullOutTickets, retrieveTickets & allocations)
   const getProjectComprehensiveMetrics = (projectId: string, projectName: string) => {
     const pId = (projectId || '').trim().toLowerCase();
     const pName = (projectName || '').trim().toLowerCase();
@@ -90,8 +123,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       );
     });
 
-    let materialCost = 0;
-    let materialUnits = 0;
+    let grossMaterialCost = 0;
+    let grossMaterialUnits = 0;
 
     relatedPullOuts.forEach((ticket) => {
       ticket.items.forEach((item) => {
@@ -107,13 +140,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             price = invItem.unitPrice;
           }
         }
-        materialCost += item.quantity * price;
-        materialUnits += item.quantity;
+        grossMaterialCost += item.quantity * price;
+        grossMaterialUnits += item.quantity;
       });
     });
 
     // Fallback: If no pull-outs recorded, check item.projectAllocations
-    if (materialUnits === 0) {
+    if (grossMaterialUnits === 0) {
       items.forEach((item) => {
         if (item.projectAllocations) {
           item.projectAllocations.forEach((alloc) => {
@@ -125,9 +158,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               (aId && aId === pName) ||
               (aName && aName === pId)
             ) {
-              materialUnits += alloc.quantity;
+              grossMaterialUnits += alloc.quantity;
               if (item.unitPrice) {
-                materialCost += alloc.quantity * item.unitPrice;
+                grossMaterialCost += alloc.quantity * item.unitPrice;
               }
             }
           });
@@ -135,7 +168,44 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       });
     }
 
-    // 2. Deployment Manpower & Mobilization
+    // 2. Retrieve / Returned Materials from site back to warehouse
+    const relatedRetrieves = retrieveTickets.filter((t) => {
+      const tId = (t.projectId || '').trim().toLowerCase();
+      const tName = (t.projectName || '').trim().toLowerCase();
+      return (
+        (tId && tId === pId) ||
+        (tName && tName === pName) ||
+        (tId && tId === pName) ||
+        (tName && tName === pId)
+      );
+    });
+
+    let retrievedMaterialCost = 0;
+    let retrievedUnits = 0;
+
+    relatedRetrieves.forEach((ticket) => {
+      ticket.items.forEach((item) => {
+        let price = item.unitPrice || 0;
+        if (price === 0 && items.length > 0) {
+          const invItem = items.find(
+            (i) =>
+              (item.itemId && i.id.toLowerCase() === item.itemId.toLowerCase()) ||
+              (item.assetId && i.assetId.toLowerCase() === item.assetId.toLowerCase()) ||
+              (item.description && i.description.toLowerCase() === item.description.toLowerCase())
+          );
+          if (invItem && invItem.unitPrice) {
+            price = invItem.unitPrice;
+          }
+        }
+        retrievedMaterialCost += item.quantity * price;
+        retrievedUnits += item.quantity;
+      });
+    });
+
+    const netMaterialCost = Math.max(0, grossMaterialCost - retrievedMaterialCost);
+    const netMaterialUnits = Math.max(0, grossMaterialUnits - retrievedUnits);
+
+    // 3. Deployment Manpower & Mobilization
     const relatedDeployments = deploymentTickets.filter((t) => {
       const tId = (t.projectId || '').trim().toLowerCase();
       const tName = (t.projectName || '').trim().toLowerCase();
@@ -159,12 +229,19 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     });
 
     const totalDeploymentCost = laborCost + mobilizationCost;
-    const grandTotalCost = materialCost + totalDeploymentCost;
+    const grandTotalCost = netMaterialCost + totalDeploymentCost;
 
     return {
-      materialCost,
-      materialUnits,
+      grossMaterialCost,
+      retrievedMaterialCost,
+      netMaterialCost,
+      materialCost: netMaterialCost,
+      grossMaterialUnits,
+      retrievedUnits,
+      netMaterialUnits,
+      materialUnits: netMaterialUnits,
       pullOutTicketsCount: relatedPullOuts.length,
+      retrieveTicketsCount: relatedRetrieves.length,
       laborCost,
       mobilizationCost,
       totalDeploymentCost,
@@ -242,7 +319,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           </p>
         </div>
 
-        {/* Action Buttons: Add Project & Remove Project */}
+        {/* Action Buttons: Add Project, Remove Project, Retrieve Items, and Back to Inventory */}
         <div className="flex flex-wrap items-center gap-2.5">
           <button
             id="btn-add-project"
@@ -265,6 +342,17 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           >
             <Trash2 className="w-4 h-4" />
             <span>Remove Project</span>
+          </button>
+
+          {/* Retrieve Items button placed right next to Back to Inventory as requested */}
+          <button
+            id="btn-retrieve-items"
+            onClick={() => onOpenAddRetrieveModal ? onOpenAddRetrieveModal() : null}
+            className="px-4 py-2 text-xs font-bold text-teal-900 bg-teal-100 hover:bg-teal-200 border border-teal-300 rounded-lg shadow-xs hover:shadow transition-all flex items-center space-x-1.5 cursor-pointer"
+            title="Retrieve pull out items, excess materials, and unused tools back to warehouse inventory"
+          >
+            <RotateCcw className="w-4 h-4 text-teal-700" />
+            <span>Retrieve Items</span>
           </button>
 
           <button
@@ -546,6 +634,21 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5">
+                    {/* Quick Retrieve Items for this project */}
+                    {onOpenAddRetrieveModal && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenAddRetrieveModal(project.id);
+                        }}
+                        className="p-1.5 text-teal-700 bg-teal-50 hover:bg-teal-100/90 rounded-lg transition-colors cursor-pointer border border-teal-200"
+                        title="Retrieve excess/unused items from this project back to warehouse"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+
                     {/* View Details Button */}
                     <span className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-700 group-hover:text-teal-800 bg-teal-50 group-hover:bg-teal-100/80 px-2.5 py-1 rounded-md transition-colors">
                       <span>View Details</span>
@@ -568,6 +671,464 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         </div>
       )}
 
+      {/* ========================================================================= */}
+      {/* RETRIEVE TICKETS SUMMARY (MGA NA-RETRIEVE NA GAMIT / MATERIAL RETURNS) */}
+      {/* ========================================================================= */}
+      <div id="retrieve-tickets-summary-section" className="mt-10 pt-8 border-t-2 border-dashed border-slate-200 space-y-5">
+        {/* Section Header */}
+        <div className="bg-white rounded-2xl p-6 border border-slate-200/90 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center space-x-2.5">
+              <div className="p-2.5 rounded-xl bg-teal-50 text-teal-700 border border-teal-200">
+                <RotateCcw className="w-5 h-5 text-teal-700" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 tracking-tight flex items-center gap-2">
+                  <span>Retrieve Ticket Summary</span>
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 border border-teal-200">
+                    {retrieveTickets.length} Slips
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Talaan ng mga naibalik na pull-out items, sobra at hindi nagamit na gamit o materyales galing sa bawat site project pabalik sa bodega. Pwedeng i-download bilang PDF form.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Buttons for Retrieve Section */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              onClick={() => onOpenAddRetrieveModal && onOpenAddRetrieveModal()}
+              className="px-4 py-2 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-sm hover:shadow transition-all flex items-center space-x-1.5 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Retrieve Items</span>
+            </button>
+
+            {retrieveTickets.length > 0 && onOpenRemoveRetrieveModal && (
+              <button
+                onClick={onOpenRemoveRetrieveModal}
+                className="px-3.5 py-2 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg transition-colors cursor-pointer flex items-center space-x-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Remove Slip</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Retrieve KPI Badges */}
+        {(() => {
+          const totalSlips = retrieveTickets.length;
+          const totalUnitsReturned = retrieveTickets.reduce(
+            (sum, t) => sum + t.items.reduce((s, i) => s + (i.quantity || 0), 0),
+            0
+          );
+          const totalEstimatedValue = retrieveTickets.reduce((sum, t) => {
+            return (
+              sum +
+              t.items.reduce((s, line) => {
+                const itemMatch = items.find(
+                  (inv) =>
+                    inv.id === line.itemId ||
+                    (inv.assetId && inv.assetId === line.assetId) ||
+                    inv.description.toLowerCase() === line.description.toLowerCase()
+                );
+                const price = line.unitPrice || itemMatch?.unitPrice || 0;
+                return s + line.quantity * price;
+              }, 0)
+            );
+          }, 0);
+
+          const uniqueProjectsCount = new Set(
+            retrieveTickets.map((t) => t.projectId || t.projectName).filter(Boolean)
+          ).size;
+
+          return (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
+                    Total Return Slips
+                  </span>
+                  <div className="text-xl font-black text-slate-900 mt-0.5">{totalSlips}</div>
+                  <span className="text-[10px] text-teal-600 font-semibold">Recorded return tickets</span>
+                </div>
+                <div className="p-2.5 rounded-lg bg-teal-50 text-teal-600 border border-teal-100">
+                  <FileText className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
+                    Total Units Restored
+                  </span>
+                  <div className="text-xl font-black text-teal-900 mt-0.5 font-mono">{totalUnitsReturned}</div>
+                  <span className="text-[10px] text-teal-600 font-semibold">Added back to bodega</span>
+                </div>
+                <div className="p-2.5 rounded-lg bg-teal-50 text-teal-600 border border-teal-100">
+                  <Warehouse className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
+                    Value of Restored Items
+                  </span>
+                  <div className="text-xl font-black text-emerald-800 mt-0.5 font-mono">
+                    {formatCurrency(totalEstimatedValue)}
+                  </div>
+                  <span className="text-[10px] text-emerald-600 font-semibold">Recovered project assets</span>
+                </div>
+                <div className="p-2.5 rounded-lg bg-emerald-50 text-emerald-600 border border-emerald-100">
+                  <Banknote className="w-5 h-5" />
+                </div>
+              </div>
+
+              <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500 block">
+                    Participating Sites
+                  </span>
+                  <div className="text-xl font-black text-slate-900 mt-0.5">{uniqueProjectsCount}</div>
+                  <span className="text-[10px] text-slate-500 font-semibold">Projects with returns</span>
+                </div>
+                <div className="p-2.5 rounded-lg bg-slate-100 text-slate-600 border border-slate-200">
+                  <Building2 className="w-5 h-5" />
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {/* Filter and Search Bar for Retrieve Tickets */}
+        <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search slip #, project, item description, personnel..."
+              value={retrieveSearch}
+              onChange={(e) => setRetrieveSearch(e.target.value)}
+              className="w-full pl-9 pr-4 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+            />
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="text-xs font-semibold text-slate-600 shrink-0">Filter by Project:</label>
+            <select
+              value={retrieveProjectFilter}
+              onChange={(e) => setRetrieveProjectFilter(e.target.value)}
+              className="px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium cursor-pointer"
+            >
+              <option value="all">All Projects ({retrieveTickets.length})</option>
+              {projects.map((p) => {
+                const count = retrieveTickets.filter(
+                  (t) =>
+                    t.projectId === p.id ||
+                    t.projectName.toLowerCase() === p.name.toLowerCase()
+                ).length;
+                return (
+                  <option key={p.id} value={p.id}>
+                    {p.name} ({count})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        </div>
+
+        {/* Retrieve Tickets List */}
+        {(() => {
+          const filtered = retrieveTickets.filter((ticket) => {
+            const matchesProj =
+              retrieveProjectFilter === 'all' ||
+              ticket.projectId === retrieveProjectFilter ||
+              ticket.projectName.toLowerCase() ===
+                projects.find((p) => p.id === retrieveProjectFilter)?.name.toLowerCase();
+
+            const q = retrieveSearch.toLowerCase();
+            const loc = (ticket.projectLocation || ticket.location || '').toLowerCase();
+            const matchesSearch =
+              !q ||
+              ticket.id.toLowerCase().includes(q) ||
+              ticket.projectName.toLowerCase().includes(q) ||
+              loc.includes(q) ||
+              ticket.retrievedBy.toLowerCase().includes(q) ||
+              ticket.receivedBy.toLowerCase().includes(q) ||
+              ticket.date.includes(q) ||
+              ticket.items.some(
+                (item) =>
+                  item.description.toLowerCase().includes(q) ||
+                  (item.assetId && item.assetId.toLowerCase().includes(q)) ||
+                  (item.remarks && item.remarks.toLowerCase().includes(q))
+              );
+
+            return matchesProj && matchesSearch;
+          });
+
+          if (retrieveTickets.length === 0) {
+            return (
+              <div className="bg-white rounded-2xl p-10 border border-dashed border-slate-300 text-center space-y-3">
+                <div className="w-12 h-12 rounded-full bg-teal-50 text-teal-600 flex items-center justify-center mx-auto">
+                  <RotateCcw className="w-6 h-6" />
+                </div>
+                <h4 className="text-sm font-bold text-slate-800">Walang Naka-rekord na Retrieve Ticket</h4>
+                <p className="text-xs text-slate-500 max-w-md mx-auto">
+                  Gamitin ang <strong>"Retrieve Items"</strong> button kapag may mga materyales, gamit o tools na natira sa site project at ibinabalik sa bodega upang muling maibalik sa warehouse inventory.
+                </p>
+                <button
+                  onClick={() => onOpenAddRetrieveModal && onOpenAddRetrieveModal()}
+                  className="px-4 py-2 text-xs font-bold text-teal-800 bg-teal-100 hover:bg-teal-200 border border-teal-300 rounded-lg transition-colors cursor-pointer inline-flex items-center space-x-1.5"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Gumawa ng Unang Retrieve Slip</span>
+                </button>
+              </div>
+            );
+          }
+
+          if (filtered.length === 0) {
+            return (
+              <div className="bg-white rounded-2xl p-8 border border-dashed border-slate-300 text-center space-y-2">
+                <p className="text-xs font-semibold text-slate-600">Walang tumugmang Retrieve Ticket sa iyong search o filter.</p>
+                <button
+                  onClick={() => {
+                    setRetrieveSearch('');
+                    setRetrieveProjectFilter('all');
+                  }}
+                  className="text-xs text-teal-700 hover:underline font-bold"
+                >
+                  I-reset ang filter
+                </button>
+              </div>
+            );
+          }
+
+          return (
+            <div className="space-y-3">
+              {filtered.map((ticket) => {
+                const isExpanded = expandedRetrieveTicketId === ticket.id;
+                const totalUnits = ticket.items.reduce((s, i) => s + (i.quantity || 0), 0);
+                const relatedProject = projects.find(
+                  (p) =>
+                    p.id === ticket.projectId ||
+                    p.name.toLowerCase() === ticket.projectName.toLowerCase()
+                );
+
+                const ticketTotalValue = ticket.items.reduce((sum, line) => {
+                  const invMatch = items.find(
+                    (inv) =>
+                      inv.id === line.itemId ||
+                      (inv.assetId && inv.assetId === line.assetId) ||
+                      inv.description.toLowerCase() === line.description.toLowerCase()
+                  );
+                  const price = line.unitPrice || invMatch?.unitPrice || 0;
+                  return sum + line.quantity * price;
+                }, 0);
+
+                return (
+                  <div
+                    key={ticket.id}
+                    className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden transition-all hover:border-teal-300"
+                  >
+                    {/* Card Header Row */}
+                    <div className="p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                      <div className="flex items-start space-x-3.5">
+                        <div className="p-2.5 rounded-xl bg-teal-50 text-teal-700 border border-teal-200 shrink-0 mt-0.5">
+                          <RotateCcw className="w-5 h-5" />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-xs font-bold text-teal-800 bg-teal-50 px-2.5 py-0.5 rounded-md border border-teal-200">
+                              {ticket.id}
+                            </span>
+                            <span className="font-bold text-sm text-slate-900">
+                              {ticket.projectName}
+                            </span>
+                            {(ticket.projectLocation || ticket.location) && (
+                              <span className="text-[11px] text-slate-500 flex items-center space-x-1">
+                                <MapPin className="w-3 h-3 text-slate-400" />
+                                <span>{ticket.projectLocation || ticket.location}</span>
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-600">
+                            <span>
+                              <strong>Date:</strong> {ticket.date}
+                            </span>
+                            <span>
+                              <strong>Returned To:</strong> {ticket.returnedToWarehouse || ticket.returnedTo || 'Main Bodega'}
+                            </span>
+                            <span>
+                              <strong>Retrieved By:</strong> {ticket.retrievedBy}
+                            </span>
+                            <span>
+                              <strong>Received By:</strong> {ticket.receivedBy}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right KPI & Action Buttons */}
+                      <div className="flex flex-wrap items-center justify-between lg:justify-end gap-3 pt-2 lg:pt-0 border-t lg:border-t-0 border-slate-100">
+                        <div className="flex items-center space-x-4 text-right">
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                              Returned Items
+                            </span>
+                            <span className="text-xs font-bold text-slate-900">
+                              {ticket.items.length} lines ({totalUnits} pcs)
+                            </span>
+                          </div>
+                          {ticketTotalValue > 0 && (
+                            <div>
+                              <span className="text-[10px] uppercase font-bold text-slate-400 block">
+                                Est. Value
+                              </span>
+                              <span className="text-xs font-mono font-bold text-teal-800">
+                                {formatCurrency(ticketTotalValue)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center space-x-2">
+                          {/* Toggle Expand Line Items Button */}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedRetrieveTicketId(isExpanded ? null : ticket.id)
+                            }
+                            className="px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 flex items-center space-x-1 transition-colors cursor-pointer"
+                          >
+                            <span>{isExpanded ? 'Hide Items' : 'View Items'}</span>
+                            {isExpanded ? (
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+
+                          {/* Download PDF Form Button */}
+                          <button
+                            type="button"
+                            onClick={() => generateRetrievePDF({ ticket, project: relatedProject })}
+                            className="px-3 py-1.5 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-lg shadow-2xs hover:shadow transition-all flex items-center space-x-1.5 cursor-pointer"
+                            title="Download Material Return Slip PDF"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                            <span>PDF Form</span>
+                          </button>
+
+                          {/* Delete Slip Record Button */}
+                          {onDeleteRetrieveTicket && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (
+                                  window.confirm(
+                                    `Burahin ang Retrieve Ticket ${ticket.id} (${ticket.projectName})?`
+                                  )
+                                ) {
+                                  onDeleteRetrieveTicket(ticket.id, false);
+                                }
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Delete this ticket"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Expanded Items Table */}
+                    {isExpanded && (
+                      <div className="px-4 sm:px-6 pb-5 pt-2 bg-slate-50/70 border-t border-slate-200">
+                        <div className="text-xs font-bold text-slate-700 uppercase tracking-wider mb-2.5 flex items-center justify-between">
+                          <span>List of Retrieved Materials & Tools:</span>
+                          <span className="text-[11px] text-slate-500 font-normal">
+                            Reason: {ticket.reasonForReturn || ticket.notes || 'Excess / Unused Materials'}
+                          </span>
+                        </div>
+
+                        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                          <table className="w-full text-left text-xs border-collapse">
+                            <thead>
+                              <tr className="bg-slate-100/90 text-slate-700 border-b border-slate-200 text-[11px]">
+                                <th className="py-2 px-3 font-bold w-12 text-center">#</th>
+                                <th className="py-2 px-3 font-bold">Asset ID / Code</th>
+                                <th className="py-2 px-3 font-bold">Item Description</th>
+                                <th className="py-2 px-3 font-bold text-center">Qty Returned</th>
+                                <th className="py-2 px-3 font-bold text-center">Unit</th>
+                                <th className="py-2 px-3 font-bold">Condition Status</th>
+                                <th className="py-2 px-3 font-bold">Remarks / Notes</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {ticket.items.map((line, idx) => {
+                                const condStr = line.condition || 'Good / Unused';
+                                const isGood = condStr.includes('Good') || condStr.includes('Excess');
+                                const isRepair = condStr.includes('Repair');
+                                const isDamaged = condStr.includes('Damaged') || condStr.includes('Scrap');
+
+                                return (
+                                  <tr key={idx} className="hover:bg-slate-50/80">
+                                    <td className="py-2 px-3 text-center text-slate-400 font-mono text-[11px]">
+                                      {idx + 1}
+                                    </td>
+                                    <td className="py-2 px-3 font-mono text-[11px] text-teal-800 font-semibold">
+                                      {line.assetId || '-'}
+                                    </td>
+                                    <td className="py-2 px-3 font-semibold text-slate-900">
+                                      {line.description}
+                                    </td>
+                                    <td className="py-2 px-3 text-center font-bold text-teal-900 font-mono">
+                                      +{line.quantity}
+                                    </td>
+                                    <td className="py-2 px-3 text-center text-slate-600 font-medium">
+                                      {line.unit || 'pcs'}
+                                    </td>
+                                    <td className="py-2 px-3">
+                                      <span
+                                        className={`inline-block px-2 py-0.5 text-[10px] font-bold rounded-md border ${
+                                          isGood
+                                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                            : isRepair
+                                            ? 'bg-amber-50 text-amber-700 border-amber-200'
+                                            : isDamaged
+                                            ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                                        }`}
+                                      >
+                                        {line.condition || 'Good / Unused'}
+                                      </span>
+                                    </td>
+                                    <td className="py-2 px-3 text-slate-500 text-[11px]">
+                                      {line.remarks || '-'}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+      </div>
+
       {/* Project Details & Cost Breakdown Modal */}
       <ProjectDetailsModal
         isOpen={!!selectedProjectForDetails}
@@ -575,9 +1136,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         project={selectedProjectForDetails}
         pullOutTickets={pullOutTickets}
         deploymentTickets={deploymentTickets}
+        retrieveTickets={retrieveTickets}
         inventoryItems={items}
         onOpenAddPullOutForProject={onOpenAddPullOutForProject}
         onOpenAddDeploymentForProject={onOpenAddDeploymentForProject}
+        onOpenAddRetrieveForProject={(projectId) => {
+          if (onOpenAddRetrieveModal) onOpenAddRetrieveModal(projectId);
+        }}
         onUpdateProject={(updated) => {
           if (onUpdateProject) onUpdateProject(updated);
           setSelectedProjectForDetails(updated);
