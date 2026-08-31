@@ -34,6 +34,9 @@ import { RemoveDeploymentModal } from './components/RemoveDeploymentModal';
 import { AddRetrieveModal } from './components/AddRetrieveModal';
 import { RemoveRetrieveModal } from './components/RemoveRetrieveModal';
 import { ManageManpowerModal } from './components/ManageManpowerModal';
+import { LoginScreen } from './components/LoginScreen';
+import { ChangePasswordModal } from './components/ChangePasswordModal';
+import { authService, AuthUser } from './utils/authService';
 
 const STORAGE_KEY = 'dsi_inventory_data_v2_user';
 const PROJECTS_STORAGE_KEY = 'dsi_inventory_projects_v1';
@@ -97,6 +100,42 @@ const INITIAL_PURCHASES: PurchaseRecord[] = [
 const ACTIVE_TAB_STORAGE_KEY = 'dsi_active_tab';
 
 export default function App() {
+  // Authentication State
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => {
+    return authService.getStoredSession().user;
+  });
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
+    return authService.getStoredSession().isAuthenticated;
+  });
+  const [isVerifyingAuth, setIsVerifyingAuth] = useState<boolean>(true);
+  const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState<boolean>(false);
+
+  // Verify active session on initial mount
+  useEffect(() => {
+    let isMounted = true;
+    authService.verifyCurrentSession().then((session) => {
+      if (isMounted) {
+        setIsAuthenticated(session.isAuthenticated);
+        setCurrentUser(session.user);
+        setIsVerifyingAuth(false);
+      }
+    });
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleLoginSuccess = (user: AuthUser) => {
+    setCurrentUser(user);
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = async () => {
+    await authService.logout();
+    setCurrentUser(null);
+    setIsAuthenticated(false);
+  };
+
   const [currentTab, setCurrentTab] = useState<TabType>(() => {
     try {
       const savedTab = localStorage.getItem(ACTIVE_TAB_STORAGE_KEY) as TabType;
@@ -866,6 +905,11 @@ export default function App() {
     setIsAddModalOpen(true);
   };
 
+  // When unauthenticated, always enforce and present the secure LoginScreen
+  if (!isAuthenticated) {
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
     <div id="app-root-container" className="flex min-h-screen bg-slate-100 font-sans text-slate-900 antialiased">
       {/* Sidebar */}
@@ -878,6 +922,9 @@ export default function App() {
           }
         }}
         reorderAlertCount={reorderAlertCount}
+        user={currentUser}
+        onLogout={handleLogout}
+        onChangePassword={() => setIsChangePasswordModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -891,6 +938,9 @@ export default function App() {
             setFilterReorderActive(true);
           }}
           onResetData={handleResetData}
+          user={currentUser}
+          onLogout={handleLogout}
+          onChangePassword={() => setIsChangePasswordModalOpen(true)}
         />
 
         {/* Dynamic Views based on active tab */}
@@ -1142,6 +1192,15 @@ export default function App() {
         onClose={() => setDetailsItem(null)}
         onEdit={(item) => setEditingItem(item)}
         onRestock={handleOpenRestockModalFor}
+      />
+
+      {/* Change Password Modal (Triggered from TopNav or Sidebar) */}
+      <ChangePasswordModal
+        isOpen={isChangePasswordModalOpen}
+        onClose={() => setIsChangePasswordModalOpen(false)}
+        onSuccess={(msg) => {
+          console.log(msg);
+        }}
       />
     </div>
   );
