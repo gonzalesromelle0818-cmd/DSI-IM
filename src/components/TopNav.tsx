@@ -5,11 +5,13 @@ import {
   HelpCircle,
   AlertTriangle,
   RefreshCw,
+  Database,
   Cloud,
   LogOut,
   KeyRound,
   ChevronDown,
   Shield,
+  UploadCloud,
 } from 'lucide-react';
 import { TabType } from '../types';
 import { AuthUser } from '../utils/authService';
@@ -20,6 +22,8 @@ interface TopNavProps {
   onQuickFilterReorder?: () => void;
   onResetData?: () => void;
   isCloudConnected?: boolean;
+  isSupabaseConfigured?: boolean;
+  onOpenSupabaseSettings?: () => void;
   user?: AuthUser | null;
   onLogout?: () => void;
   onChangePassword?: () => void;
@@ -30,7 +34,9 @@ export const TopNav: React.FC<TopNavProps> = ({
   reorderCount,
   onQuickFilterReorder,
   onResetData,
-  isCloudConnected = true,
+  isCloudConnected = false,
+  isSupabaseConfigured = false,
+  onOpenSupabaseSettings,
   user,
   onLogout,
   onChangePassword,
@@ -67,15 +73,40 @@ export const TopNav: React.FC<TopNavProps> = ({
           {getTabTitle(currentTab)}
         </h1>
 
-        {/* Live Cloud Database Connected Badge */}
-        <div
-          className="hidden md:flex items-center space-x-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"
-          title="All devices and users are connected to the shared Cloud Firestore database in real-time"
-        >
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-          <Cloud className="w-3 h-3 text-emerald-600" />
-          <span>Cloud Synced</span>
-        </div>
+        {/* Live Supabase Cloud Database Connected Badge */}
+        {onOpenSupabaseSettings && (
+          <button
+            id="btn-supabase-status-badge"
+            type="button"
+            onClick={onOpenSupabaseSettings}
+            className={`hidden md:inline-flex items-center space-x-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all cursor-pointer shadow-2xs hover:opacity-90 ${
+              isCloudConnected
+                ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
+                : isSupabaseConfigured
+                ? 'bg-blue-50 text-blue-800 border-blue-300'
+                : 'bg-slate-100 text-slate-700 border-slate-300 hover:bg-slate-200'
+            }`}
+            title="Click to manage Supabase Cloud Database connection and settings"
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isCloudConnected
+                  ? 'bg-emerald-500 animate-pulse'
+                  : isSupabaseConfigured
+                  ? 'bg-blue-500 animate-pulse'
+                  : 'bg-amber-400'
+              }`}
+            />
+            <Database className="w-3.5 h-3.5" />
+            <span>
+              {isCloudConnected
+                ? 'Supabase Cloud Synced'
+                : isSupabaseConfigured
+                ? 'Supabase Connecting...'
+                : 'Supabase Database'}
+            </span>
+          </button>
+        )}
 
         {currentTab === 'inventory' && reorderCount > 0 && (
           <button
@@ -105,6 +136,17 @@ export const TopNav: React.FC<TopNavProps> = ({
 
         {/* Action icons */}
         <div className="flex items-center space-x-1 border-r border-slate-200 pr-2 sm:pr-3">
+          {onOpenSupabaseSettings && (
+            <button
+              id="btn-nav-supabase-settings"
+              onClick={onOpenSupabaseSettings}
+              className="p-2 rounded-full text-slate-500 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer"
+              title="Supabase Database Settings"
+            >
+              <Database className="w-5 h-5" />
+            </button>
+          )}
+
           <button
             id="btn-notifications"
             onClick={onQuickFilterReorder}
@@ -157,7 +199,7 @@ export const TopNav: React.FC<TopNavProps> = ({
               />
               <div
                 id="user-dropdown-menu"
-                className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-40 animate-in fade-in zoom-in-95 duration-150"
+                className="absolute right-0 mt-2 w-60 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-40 animate-in fade-in zoom-in-95 duration-150"
               >
                 <div className="px-4 py-2 border-b border-slate-100">
                   <div className="text-xs font-bold text-slate-800 flex items-center space-x-1.5">
@@ -170,6 +212,20 @@ export const TopNav: React.FC<TopNavProps> = ({
                 </div>
 
                 <div className="py-1">
+                  {onOpenSupabaseSettings && (
+                    <button
+                      id="menu-btn-supabase-settings"
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        onOpenSupabaseSettings();
+                      }}
+                      className="w-full px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center space-x-2.5 transition-colors cursor-pointer"
+                    >
+                      <Database className="w-4 h-4 text-emerald-600" />
+                      <span>Supabase Database</span>
+                    </button>
+                  )}
+
                   {onChangePassword && (
                     <button
                       id="menu-btn-change-password"

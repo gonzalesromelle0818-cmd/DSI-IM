@@ -37,6 +37,8 @@ import { ManageManpowerModal } from './components/ManageManpowerModal';
 import { LoginScreen } from './components/LoginScreen';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { authService, AuthUser } from './utils/authService';
+import { supabaseService } from './utils/supabaseService';
+import { SupabaseSettingsModal } from './components/SupabaseSettingsModal';
 
 const STORAGE_KEY = 'dsi_inventory_data_v2_user';
 const PROJECTS_STORAGE_KEY = 'dsi_inventory_projects_v1';
@@ -265,14 +267,109 @@ export default function App() {
     return [];
   });
 
-  // Save to localStorage on change
+  // Supabase State & Cloud Persistence
+  const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
+  const [isCloudConnected, setIsCloudConnected] = useState(false);
+  const [isSupabaseConfigured, setIsSupabaseConfigured] = useState(() => !!supabaseService.getStoredConfig().config);
+
+  // Initial fetch and real-time subscription from Supabase
+  useEffect(() => {
+    let unsubscribe: (() => void) | null = null;
+
+    const initSupabase = async () => {
+      const { config } = supabaseService.getStoredConfig();
+      if (!config) {
+        setIsSupabaseConfigured(false);
+        setIsCloudConnected(false);
+        return;
+      }
+
+      setIsSupabaseConfigured(true);
+
+      try {
+        const ping = await supabaseService.testConnection();
+        if (ping.success) {
+          setIsCloudConnected(true);
+
+          // Fetch all remote data from Supabase to synchronize
+          const cloudRes = await supabaseService.fetchAllData();
+          if (cloudRes.success && cloudRes.data) {
+            const cloudData = cloudRes.data;
+            if (cloudData.inventory && Array.isArray(cloudData.inventory) && cloudData.inventory.length > 0) {
+              setItems(cloudData.inventory);
+            }
+            if (cloudData.projects && Array.isArray(cloudData.projects)) {
+              setProjects(cloudData.projects);
+            }
+            if (cloudData.pull_outs && Array.isArray(cloudData.pull_outs)) {
+              setPullOutTickets(cloudData.pull_outs);
+            }
+            if (cloudData.deployments && Array.isArray(cloudData.deployments)) {
+              setDeploymentTickets(cloudData.deployments);
+            }
+            if (cloudData.manpower_rates && Array.isArray(cloudData.manpower_rates) && cloudData.manpower_rates.length > 0) {
+              setManpowerRates(cloudData.manpower_rates);
+            }
+            if (cloudData.purchases && Array.isArray(cloudData.purchases)) {
+              setPurchases(cloudData.purchases);
+            }
+            if (cloudData.retrieves && Array.isArray(cloudData.retrieves)) {
+              setRetrieveTickets(cloudData.retrieves);
+            }
+            if (cloudData.auth_credentials) {
+              authService.syncCredentialsFromRemote(cloudData.auth_credentials);
+            }
+          }
+
+          // Subscribe to live multi-user real-time changes
+          unsubscribe = supabaseService.subscribeToChanges((key, data) => {
+            if (key === 'inventory' && Array.isArray(data)) {
+              setItems(data);
+            } else if (key === 'projects' && Array.isArray(data)) {
+              setProjects(data);
+            } else if (key === 'pull_outs' && Array.isArray(data)) {
+              setPullOutTickets(data);
+            } else if (key === 'deployments' && Array.isArray(data)) {
+              setDeploymentTickets(data);
+            } else if (key === 'manpower_rates' && Array.isArray(data)) {
+              setManpowerRates(data);
+            } else if (key === 'purchases' && Array.isArray(data)) {
+              setPurchases(data);
+            } else if (key === 'retrieves' && Array.isArray(data)) {
+              setRetrieveTickets(data);
+            } else if (key === 'auth_credentials') {
+              authService.syncCredentialsFromRemote(data);
+            }
+          });
+        } else {
+          setIsCloudConnected(false);
+        }
+      } catch (err) {
+        console.error('Supabase initialization error:', err);
+        setIsCloudConnected(false);
+      }
+    };
+
+    initSupabase();
+
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [isSupabaseConfigured]);
+
+  // Save to localStorage and Supabase on change
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
     } catch (e) {
       console.error('Failed to save inventory', e);
     }
-  }, [items]);
+    if (isCloudConnected) {
+      supabaseService.saveData('inventory', items);
+    }
+  }, [items, isCloudConnected]);
 
   useEffect(() => {
     try {
@@ -280,7 +377,10 @@ export default function App() {
     } catch (e) {
       console.error('Failed to save projects', e);
     }
-  }, [projects]);
+    if (isCloudConnected) {
+      supabaseService.saveData('projects', projects);
+    }
+  }, [projects, isCloudConnected]);
 
   useEffect(() => {
     try {
@@ -288,7 +388,10 @@ export default function App() {
     } catch (e) {
       console.error('Failed to save pull out tickets', e);
     }
-  }, [pullOutTickets]);
+    if (isCloudConnected) {
+      supabaseService.saveData('pull_outs', pullOutTickets);
+    }
+  }, [pullOutTickets, isCloudConnected]);
 
   useEffect(() => {
     try {
@@ -296,7 +399,10 @@ export default function App() {
     } catch (e) {
       console.error('Failed to save deployment tickets', e);
     }
-  }, [deploymentTickets]);
+    if (isCloudConnected) {
+      supabaseService.saveData('deployments', deploymentTickets);
+    }
+  }, [deploymentTickets, isCloudConnected]);
 
   useEffect(() => {
     try {
@@ -304,7 +410,10 @@ export default function App() {
     } catch (e) {
       console.error('Failed to save manpower rates', e);
     }
-  }, [manpowerRates]);
+    if (isCloudConnected) {
+      supabaseService.saveData('manpower_rates', manpowerRates);
+    }
+  }, [manpowerRates, isCloudConnected]);
 
   useEffect(() => {
     try {
@@ -312,7 +421,10 @@ export default function App() {
     } catch (e) {
       console.error('Failed to save purchases', e);
     }
-  }, [purchases]);
+    if (isCloudConnected) {
+      supabaseService.saveData('purchases', purchases);
+    }
+  }, [purchases, isCloudConnected]);
 
   useEffect(() => {
     try {
@@ -320,7 +432,38 @@ export default function App() {
     } catch (e) {
       console.error('Failed to save retrieve tickets', e);
     }
-  }, [retrieveTickets]);
+    if (isCloudConnected) {
+      supabaseService.saveData('retrieves', retrieveTickets);
+    }
+  }, [retrieveTickets, isCloudConnected]);
+
+  // Cloud Manual Push / Pull handlers
+  const handlePushAllToCloud = async () => {
+    await Promise.all([
+      supabaseService.saveData('inventory', items),
+      supabaseService.saveData('projects', projects),
+      supabaseService.saveData('pull_outs', pullOutTickets),
+      supabaseService.saveData('deployments', deploymentTickets),
+      supabaseService.saveData('manpower_rates', manpowerRates),
+      supabaseService.saveData('purchases', purchases),
+      supabaseService.saveData('retrieves', retrieveTickets),
+    ]);
+  };
+
+  const handlePullAllFromCloud = async () => {
+    const cloudRes = await supabaseService.fetchAllData();
+    if (cloudRes.success && cloudRes.data) {
+      const cloudData = cloudRes.data;
+      if (cloudData.inventory && Array.isArray(cloudData.inventory)) setItems(cloudData.inventory);
+      if (cloudData.projects && Array.isArray(cloudData.projects)) setProjects(cloudData.projects);
+      if (cloudData.pull_outs && Array.isArray(cloudData.pull_outs)) setPullOutTickets(cloudData.pull_outs);
+      if (cloudData.deployments && Array.isArray(cloudData.deployments)) setDeploymentTickets(cloudData.deployments);
+      if (cloudData.manpower_rates && Array.isArray(cloudData.manpower_rates)) setManpowerRates(cloudData.manpower_rates);
+      if (cloudData.purchases && Array.isArray(cloudData.purchases)) setPurchases(cloudData.purchases);
+      if (cloudData.retrieves && Array.isArray(cloudData.retrieves)) setRetrieveTickets(cloudData.retrieves);
+      if (cloudData.auth_credentials) authService.syncCredentialsFromRemote(cloudData.auth_credentials);
+    }
+  };
 
   // Modal States
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -936,6 +1079,8 @@ export default function App() {
         user={currentUser}
         onLogout={handleLogout}
         onChangePassword={() => setIsChangePasswordModalOpen(true)}
+        isCloudConnected={isCloudConnected}
+        onOpenSupabaseSettings={() => setIsSupabaseModalOpen(true)}
       />
 
       {/* Main Content Area */}
@@ -952,6 +1097,9 @@ export default function App() {
           user={currentUser}
           onLogout={handleLogout}
           onChangePassword={() => setIsChangePasswordModalOpen(true)}
+          isCloudConnected={isCloudConnected}
+          isSupabaseConfigured={isSupabaseConfigured}
+          onOpenSupabaseSettings={() => setIsSupabaseModalOpen(true)}
         />
 
         {/* Dynamic Views based on active tab */}
@@ -1212,6 +1360,18 @@ export default function App() {
         onSuccess={(msg) => {
           console.log(msg);
         }}
+      />
+
+      {/* Supabase Database Cloud Sync Modal */}
+      <SupabaseSettingsModal
+        isOpen={isSupabaseModalOpen}
+        onClose={() => setIsSupabaseModalOpen(false)}
+        onConfigChanged={() => {
+          const { config } = supabaseService.getStoredConfig();
+          setIsSupabaseConfigured(!!config);
+        }}
+        onPushLocalToCloud={handlePushAllToCloud}
+        onPullCloudToLocal={handlePullAllFromCloud}
       />
     </div>
   );
