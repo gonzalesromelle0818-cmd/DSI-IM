@@ -175,18 +175,29 @@ export default function App() {
     return INITIAL_INVENTORY;
   });
 
-  // Projects state (with rich initial seed or saved projects)
+  // Projects state (starts clean without demo samples, persists deletions)
   const [projects, setProjects] = useState<Project[]>(() => {
     try {
       const saved = localStorage.getItem(PROJECTS_STORAGE_KEY);
-      if (saved) {
+      if (saved !== null) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) {
+          // Purge legacy hardcoded demo projects if lingering from prior sessions
+          return parsed.filter(
+            (p) =>
+              p.id !== 'PRJ-2026-001' &&
+              p.id !== 'PRJ-2026-002' &&
+              p.id !== 'PRJ-2026-003' &&
+              p.name !== 'Ayala Alveo Commercial Tower' &&
+              p.name !== 'Solinea Residential Condominium' &&
+              p.name !== 'Nuvali Eco-Villa Residence'
+          );
+        }
       }
     } catch (e) {
       console.error('Failed to parse saved projects', e);
     }
-    return INITIAL_PROJECTS;
+    return [];
   });
 
   // Pull Out Tickets state (starts clean)
