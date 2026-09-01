@@ -1,5 +1,3 @@
-import { supabaseService } from './supabaseService';
-
 export interface AuthUser {
   username: string;
   name: string;
@@ -446,23 +444,6 @@ export const authService = {
     };
 
     localStorage.setItem(LOCAL_CREDENTIALS_KEY, JSON.stringify(store));
-
-    // Also sync to Supabase if configured
-    try {
-      supabaseService.saveData('auth_credentials', store);
-    } catch {
-      // Ignore if Supabase is offline
-    }
-  },
-
-  syncCredentialsFromRemote(remoteStore: LocalAuthStore): void {
-    if (remoteStore && remoteStore.users) {
-      try {
-        localStorage.setItem(LOCAL_CREDENTIALS_KEY, JSON.stringify(remoteStore));
-      } catch (e) {
-        console.error('Failed to sync remote auth credentials', e);
-      }
-    }
   },
 
   async logout(): Promise<void> {

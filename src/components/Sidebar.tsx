@@ -10,7 +10,6 @@ import {
   LogOut,
   KeyRound,
   Shield,
-  Database,
 } from 'lucide-react';
 import { TabType } from '../types';
 import { AuthUser } from '../utils/authService';
@@ -22,8 +21,6 @@ interface SidebarProps {
   user?: AuthUser | null;
   onLogout?: () => void;
   onChangePassword?: () => void;
-  isCloudConnected?: boolean;
-  onOpenSupabaseSettings?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -33,8 +30,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   user,
   onLogout,
   onChangePassword,
-  isCloudConnected = false,
-  onOpenSupabaseSettings,
 }) => {
   const navItems = [
     {
@@ -198,25 +193,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         <div className="grid grid-cols-2 gap-1.5">
-          {onOpenSupabaseSettings && (
-            <button
-              id="sidebar-btn-supabase"
-              onClick={onOpenSupabaseSettings}
-              className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-emerald-400 hover:text-emerald-300 text-[11px] font-semibold flex items-center justify-center space-x-1 transition-colors cursor-pointer"
-              title="Supabase Cloud Database Settings"
-            >
-              <Database className="w-3 h-3" />
-              <span>Database</span>
-            </button>
-          )}
-
           {onChangePassword && (
             <button
               id="sidebar-btn-change-password"
               onClick={onChangePassword}
-              className={`px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-medium flex items-center justify-center space-x-1 transition-colors cursor-pointer ${
-                !onOpenSupabaseSettings ? 'col-span-1' : ''
-              }`}
+              className="px-2 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[11px] font-medium flex items-center justify-center space-x-1 transition-colors cursor-pointer"
               title="Change Password"
             >
               <KeyRound className="w-3 h-3" />
@@ -228,7 +209,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               id="sidebar-btn-logout"
               onClick={onLogout}
-              className="col-span-2 px-2 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/30 text-rose-300 hover:text-white text-[11px] font-bold flex items-center justify-center space-x-1 transition-colors cursor-pointer"
+              className="px-2 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/30 text-rose-300 hover:text-white text-[11px] font-bold flex items-center justify-center space-x-1 transition-colors cursor-pointer"
               title="Sign Out of Session"
             >
               <LogOut className="w-3 h-3" />
@@ -242,18 +223,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="p-3 border-t border-slate-800/80 text-slate-400 text-xs flex items-center justify-between">
         <div>
           <span className="block text-slate-300 font-medium">Inventory System</span>
-          <span className="text-[10px] text-slate-400">
-            {isCloudConnected ? 'Supabase Synced' : 'Cloud Ready'} • v2.5.0
-          </span>
+          <span className="text-[10px] text-slate-400">v2.4.0 • Real-time DB</span>
         </div>
-        <div
-          className={`w-2.5 h-2.5 rounded-full ${
-            isCloudConnected
-              ? 'bg-emerald-500 ring-4 ring-emerald-500/20'
-              : 'bg-amber-400 ring-4 ring-amber-400/20'
-          }`}
-          title={isCloudConnected ? 'Supabase Database Connected' : 'Supabase Setup Available'}
-        />
+        <div className="w-2 h-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20" title="System Online" />
       </div>
     </aside>
   );
