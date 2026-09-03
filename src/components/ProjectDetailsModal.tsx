@@ -1543,7 +1543,9 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
                 <div className="flex items-center justify-between border-b border-slate-200 pb-4">
                   <div>
                     <h3 className="text-lg font-bold text-slate-900">Official Project Cost & Progress Statement</h3>
-                    <p className="text-xs text-slate-500">Comprehensive breakdown for client billing and company audits.</p>
+                    <p className="text-xs text-slate-500">
+                      Comprehensive breakdown for client billing, company audits, and 14-point milestone progress tracking.
+                    </p>
                   </div>
                   <button
                     onClick={handleDownloadPDF}
@@ -1572,6 +1574,16 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
                       <span className="text-slate-500 block text-[10px] uppercase font-bold">Total Project Cost</span>
                       <strong className="text-base text-emerald-800">{formatCurrency(grandTotalCost)}</strong>
                     </div>
+                  </div>
+
+                  <div className="p-4 bg-teal-50/70 border border-teal-200 rounded-xl">
+                    <h4 className="text-xs font-bold text-teal-900 mb-1 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-teal-700" />
+                      <span>PDF Document Inclusions & Verification</span>
+                    </h4>
+                    <p className="text-[11px] text-teal-800 leading-relaxed">
+                      Generated PDF contains: <strong>Executive Financial Summary</strong>, <strong>Complete 14-Point Progress Milestone Schedule</strong> (with activity weight, completion dates, and remarks), <strong>Windows & Doors Schedule breakdown</strong>, full <strong>Material Pull-Out records</strong>, <strong>Warehouse Returns</strong>, <strong>Manpower Deployments</strong>, and official authorization sign-off blocks.
+                    </p>
                   </div>
                 </div>
               </div>

@@ -634,6 +634,28 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1.5">
+                    {/* Quick Download PDF Report (Cost & Progress Milestones) */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        generateProjectCostPDF({
+                          project,
+                          pullOutTickets: pullOutTickets || [],
+                          deploymentTickets: deploymentTickets || [],
+                          retrieveTickets: retrieveTickets || [],
+                          inventoryItems: items,
+                          preparedBy: "M' Chrissna / Maricel",
+                          supervisor: project.leadPerson,
+                          projectManager: 'Engr. Roberto Santos',
+                        });
+                      }}
+                      className="p-1.5 text-slate-500 hover:text-teal-700 bg-slate-50 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer border border-slate-200 hover:border-teal-300"
+                      title="Download Complete Project Report PDF (Cost & Progress Milestones)"
+                    >
+                      <FileDown className="w-3.5 h-3.5" />
+                    </button>
+
                     {/* Quick Retrieve Items for this project */}
                     {onOpenAddRetrieveModal && (
                       <button
