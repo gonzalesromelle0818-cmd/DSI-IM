@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   Bell,
   Settings,
@@ -10,6 +10,10 @@ import {
   KeyRound,
   ChevronDown,
   Shield,
+  Download,
+  Upload,
+  HardDriveDownload,
+  HardDriveUpload,
 } from 'lucide-react';
 import { TabType } from '../types';
 import { AuthUser } from '../utils/authService';
@@ -19,6 +23,8 @@ interface TopNavProps {
   reorderCount: number;
   onQuickFilterReorder?: () => void;
   onResetData?: () => void;
+  onDownloadData?: () => void;
+  onUploadDataFile?: (file: File) => void;
   isCloudConnected?: boolean;
   user?: AuthUser | null;
   onLogout?: () => void;
@@ -30,12 +36,26 @@ export const TopNav: React.FC<TopNavProps> = ({
   reorderCount,
   onQuickFilterReorder,
   onResetData,
+  onDownloadData,
+  onUploadDataFile,
   isCloudConnected = true,
   user,
   onLogout,
   onChangePassword,
 }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file && onUploadDataFile) {
+      onUploadDataFile(file);
+    }
+    // Reset file input value so user can pick the same file again if needed
+    if (e.target) {
+      e.target.value = '';
+    }
+  };
 
   const getTabTitle = (tab: TabType) => {
     switch (tab) {
@@ -90,13 +110,52 @@ export const TopNav: React.FC<TopNavProps> = ({
       </div>
 
       {/* Right Controls */}
-      <div className="flex items-center space-x-2 sm:space-x-3">
+      <div className="flex items-center space-x-2 sm:space-x-2.5">
+        {/* Hidden File Input for Upload Data */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileChange}
+          accept=".json,application/json"
+          className="hidden"
+          id="backup-file-upload-input"
+        />
+
+        {/* Upper Right Backup & Restore Group */}
+        <div className="flex items-center space-x-1.5 bg-slate-50/80 p-1 rounded-xl border border-slate-200 shadow-2xs">
+          {/* Download Data Button */}
+          <button
+            id="btn-download-data"
+            type="button"
+            onClick={onDownloadData}
+            title="Download Data (Export complete JSON backup of Inventory, Projects, Pull Outs, Deployment, Purchases)"
+            className="flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-bold text-teal-700 hover:text-white bg-white hover:bg-teal-600 border border-teal-200 hover:border-teal-600 rounded-lg transition-all cursor-pointer shadow-2xs active:scale-95"
+          >
+            <Download className="w-3.5 h-3.5 shrink-0" />
+            <span className="hidden sm:inline">Download Data</span>
+            <span className="sm:hidden text-[11px]">Download</span>
+          </button>
+
+          {/* Upload Data Button */}
+          <button
+            id="btn-upload-data"
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            title="Upload Data (Restore and import system data from previously downloaded backup JSON file)"
+            className="flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:text-teal-900 bg-white hover:bg-slate-100 border border-slate-200 hover:border-teal-300 rounded-lg transition-all cursor-pointer shadow-2xs active:scale-95"
+          >
+            <Upload className="w-3.5 h-3.5 text-slate-600 shrink-0" />
+            <span className="hidden sm:inline">Upload Data</span>
+            <span className="sm:hidden text-[11px]">Upload</span>
+          </button>
+        </div>
+
         {/* Quick Reset Mock Data if user wants clean slate */}
         {onResetData && (
           <button
             onClick={onResetData}
             title="Reset to default seed data"
-            className="hidden lg:flex items-center space-x-1 px-2.5 py-1 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
+            className="hidden xl:flex items-center space-x-1 px-2.5 py-1 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md transition-colors cursor-pointer"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Reset Demo</span>
@@ -104,7 +163,7 @@ export const TopNav: React.FC<TopNavProps> = ({
         )}
 
         {/* Action icons */}
-        <div className="flex items-center space-x-1 border-r border-slate-200 pr-2 sm:pr-3">
+        <div className="flex items-center space-x-1 border-r border-slate-200 pr-1 sm:pr-2">
           <button
             id="btn-notifications"
             onClick={onQuickFilterReorder}
@@ -170,6 +229,34 @@ export const TopNav: React.FC<TopNavProps> = ({
                 </div>
 
                 <div className="py-1">
+                  {onDownloadData && (
+                    <button
+                      id="menu-btn-download-data"
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        onDownloadData();
+                      }}
+                      className="w-full px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center space-x-2.5 transition-colors cursor-pointer"
+                    >
+                      <Download className="w-4 h-4 text-teal-600" />
+                      <span>Download Data (Backup)</span>
+                    </button>
+                  )}
+
+                  {onUploadDataFile && (
+                    <button
+                      id="menu-btn-upload-data"
+                      onClick={() => {
+                        setIsUserMenuOpen(false);
+                        fileInputRef.current?.click();
+                      }}
+                      className="w-full px-4 py-2 text-xs text-slate-700 hover:bg-slate-50 flex items-center space-x-2.5 transition-colors cursor-pointer"
+                    >
+                      <Upload className="w-4 h-4 text-indigo-600" />
+                      <span>Upload Data (Restore)</span>
+                    </button>
+                  )}
+
                   {onChangePassword && (
                     <button
                       id="menu-btn-change-password"

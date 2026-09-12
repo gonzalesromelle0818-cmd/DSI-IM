@@ -36,7 +36,10 @@ import { RemoveRetrieveModal } from './components/RemoveRetrieveModal';
 import { ManageManpowerModal } from './components/ManageManpowerModal';
 import { LoginScreen } from './components/LoginScreen';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
+import { RestoreConfirmationModal } from './components/RestoreConfirmationModal';
 import { authService, AuthUser } from './utils/authService';
+import { exportSystemData, parseBackupFile, SystemBackupPayload } from './utils/backupService';
+import { CheckCircle, AlertCircle } from 'lucide-react';
 
 const STORAGE_KEY = 'dsi_inventory_data_v2_user';
 const PROJECTS_STORAGE_KEY = 'dsi_inventory_projects_v1';
@@ -337,6 +340,13 @@ export default function App() {
   const [preselectedRestockItemId, setPreselectedRestockItemId] = useState<string | null>(null);
   const [preselectedPullOutProjectId, setPreselectedPullOutProjectId] = useState<string | null>(null);
   const [preselectedRetrieveProjectId, setPreselectedRetrieveProjectId] = useState<string | null>(null);
+
+  // Backup & Restore states
+  const [restorePayload, setRestorePayload] = useState<SystemBackupPayload | null>(null);
+  const [restoreFileName, setRestoreFileName] = useState<string>('');
+  const [isRestoreModalOpen, setIsRestoreModalOpen] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [backupToast, setBackupToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [detailsItem, setDetailsItem] = useState<InventoryItem | null>(null);
@@ -905,6 +915,94 @@ export default function App() {
     handleClearAllInventory();
   };
 
+  // Download / Export System Data Backup
+  const handleDownloadData = () => {
+    try {
+      exportSystemData({
+        items,
+        projects,
+        pullOutTickets,
+        deploymentTickets,
+        manpowerRates,
+        purchases,
+        retrieveTickets,
+      });
+      setBackupToast({
+        message: 'Matagumpay na na-download ang backup JSON file ng buong system data!',
+        type: 'success',
+      });
+      setTimeout(() => {
+        setBackupToast(null);
+      }, 5000);
+    } catch (err: any) {
+      console.error('Failed to export data', err);
+      setBackupToast({
+        message: 'Nagka-problema sa pag-download ng backup: ' + (err.message || 'Unknown error'),
+        type: 'error',
+      });
+    }
+  };
+
+  // Upload / Import System Data from File
+  const handleUploadDataFile = async (file: File) => {
+    try {
+      const parsed = await parseBackupFile(file);
+      setRestorePayload(parsed);
+      setRestoreFileName(file.name);
+      setIsRestoreModalOpen(true);
+    } catch (err: any) {
+      console.error('Failed to parse upload file', err);
+      alert('Hindi mabasa ang backup file: ' + (err.message || 'Maling JSON format'));
+    }
+  };
+
+  // Confirm and Execute Restore
+  const handleConfirmRestore = async () => {
+    if (!restorePayload) return;
+    setIsRestoring(true);
+
+    try {
+      const { data } = restorePayload;
+
+      // 1. Update React state
+      if (Array.isArray(data.inventory)) setItems(data.inventory);
+      if (Array.isArray(data.projects)) setProjects(data.projects);
+      if (Array.isArray(data.pullOutTickets)) setPullOutTickets(data.pullOutTickets);
+      if (Array.isArray(data.deploymentTickets)) setDeploymentTickets(data.deploymentTickets);
+      if (Array.isArray(data.manpowerRates)) setManpowerRates(data.manpowerRates);
+      if (Array.isArray(data.purchases)) setPurchases(data.purchases);
+      if (Array.isArray(data.retrieveTickets)) setRetrieveTickets(data.retrieveTickets);
+
+      // 2. Persist to localStorage
+      try {
+        if (Array.isArray(data.inventory)) localStorage.setItem(STORAGE_KEY, JSON.stringify(data.inventory));
+        if (Array.isArray(data.projects)) localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(data.projects));
+        if (Array.isArray(data.pullOutTickets)) localStorage.setItem(PULLOUT_STORAGE_KEY, JSON.stringify(data.pullOutTickets));
+        if (Array.isArray(data.deploymentTickets)) localStorage.setItem(DEPLOYMENT_STORAGE_KEY, JSON.stringify(data.deploymentTickets));
+        if (Array.isArray(data.manpowerRates)) localStorage.setItem(MANPOWER_RATES_STORAGE_KEY, JSON.stringify(data.manpowerRates));
+        if (Array.isArray(data.purchases)) localStorage.setItem(PURCHASES_STORAGE_KEY, JSON.stringify(data.purchases));
+        if (Array.isArray(data.retrieveTickets)) localStorage.setItem(RETRIEVE_STORAGE_KEY, JSON.stringify(data.retrieveTickets));
+      } catch (storageErr) {
+        console.warn('LocalStorage sync warning:', storageErr);
+      }
+
+      setIsRestoring(false);
+      setIsRestoreModalOpen(false);
+      setRestorePayload(null);
+
+      setBackupToast({
+        message: 'Tagumpay na na-restore ang data! Na-update na ang Inventory, Projects, at Dashboard.',
+        type: 'success',
+      });
+      setTimeout(() => {
+        setBackupToast(null);
+      }, 6000);
+    } catch (err: any) {
+      setIsRestoring(false);
+      alert('Nagka-problema sa pag-restore ng data: ' + (err.message || 'Unknown error'));
+    }
+  };
+
   // Open restock modal directly on a specific item
   const handleOpenRestockModalFor = (item: InventoryItem) => {
     setPreselectedRestockItemId(item.id);
@@ -940,7 +1038,7 @@ export default function App() {
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top Header */}
+        {/* Top Header with Upper Right Download/Upload Data controls */}
         <TopNav
           currentTab={currentTab}
           reorderCount={reorderAlertCount}
@@ -949,6 +1047,8 @@ export default function App() {
             setFilterReorderActive(true);
           }}
           onResetData={handleResetData}
+          onDownloadData={handleDownloadData}
+          onUploadDataFile={handleUploadDataFile}
           user={currentUser}
           onLogout={handleLogout}
           onChangePassword={() => setIsChangePasswordModalOpen(true)}
@@ -1213,6 +1313,47 @@ export default function App() {
           console.log(msg);
         }}
       />
+
+      {/* Restore Data Confirmation Modal */}
+      <RestoreConfirmationModal
+        isOpen={isRestoreModalOpen}
+        onClose={() => {
+          if (!isRestoring) {
+            setIsRestoreModalOpen(false);
+            setRestorePayload(null);
+          }
+        }}
+        onConfirm={handleConfirmRestore}
+        payload={restorePayload}
+        fileName={restoreFileName}
+        isRestoring={isRestoring}
+      />
+
+      {/* Floating System Toast Notification for Backup/Restore Feedback */}
+      {backupToast && (
+        <div
+          id="backup-restore-toast"
+          className="fixed bottom-6 right-6 z-50 flex items-center space-x-3 px-4 py-3 rounded-xl shadow-2xl border text-xs font-semibold backdrop-blur-md animate-in fade-in slide-in-from-bottom-5 duration-200"
+          style={{
+            backgroundColor: backupToast.type === 'success' ? '#f0fdf4' : '#fef2f2',
+            borderColor: backupToast.type === 'success' ? '#86efac' : '#fca5a5',
+            color: backupToast.type === 'success' ? '#166534' : '#991b1b',
+          }}
+        >
+          {backupToast.type === 'success' ? (
+            <CheckCircle className="w-5 h-5 text-emerald-600 shrink-0" />
+          ) : (
+            <AlertCircle className="w-5 h-5 text-red-600 shrink-0" />
+          )}
+          <span>{backupToast.message}</span>
+          <button
+            onClick={() => setBackupToast(null)}
+            className="ml-2 text-slate-400 hover:text-slate-600 cursor-pointer font-bold"
+          >
+            ✕
+          </button>
+        </div>
+      )}
     </div>
   );
 }
