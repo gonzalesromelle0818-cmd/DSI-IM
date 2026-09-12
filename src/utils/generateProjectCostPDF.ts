@@ -296,21 +296,30 @@ export function generateProjectCostPDF({
   doc.setTextColor(51, 65, 85);
   doc.text(project.targetCompletionDate || project.startDate || 'Not specified', marginX + 26, metaBoxY + 22.5);
 
-  // Right Column: Lead, Status, Progress Milestone, Total Expense
+  // Right Column: In-Charge, PM, Status, Total Expense
   const rightColX = marginX + 104;
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text('PROJECT LEAD / PM:', rightColX, metaBoxY + 5.5);
+  doc.text('PROJECT IN-CHARGE:', rightColX, metaBoxY + 5.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(project.leadPerson || supervisor || 'Unassigned', rightColX + 34, metaBoxY + 5.5);
+  doc.text(project.leadPerson || supervisor || 'Unassigned', rightColX + 38, metaBoxY + 5.5);
+
+  if (project.projectManager || projectManager) {
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(71, 85, 105);
+    doc.text('PROJECT MANAGER:', rightColX, metaBoxY + 10);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(15, 23, 42);
+    doc.text(project.projectManager || projectManager || 'Engr. Roberto Santos', rightColX + 38, metaBoxY + 10);
+  }
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text('STATUS:', rightColX, metaBoxY + 11);
+  doc.text('STATUS:', rightColX, metaBoxY + 14.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(13, 148, 136);
-  doc.text(project.status || 'Active', rightColX + 34, metaBoxY + 11);
+  doc.text(project.status || 'Active', rightColX + 38, metaBoxY + 14.5);
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
@@ -946,12 +955,12 @@ export function generateProjectCostPDF({
   doc.setTextColor(100, 116, 139);
   doc.text(`Date: ${dateGenerated}`, marginX + 4, sigY + 20.5);
 
-  // Checked / Supervisor
+  // Checked / In-Charge
   const sig2X = marginX + sigColWidth;
   doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(100, 116, 139);
-  doc.text('CHECKED BY (SITE SUPERVISOR / LEAD):', sig2X + 4, sigY + 5);
+  doc.text('CHECKED BY (PROJECT IN-CHARGE):', sig2X + 4, sigY + 5);
   doc.setFontSize(8);
   doc.setTextColor(15, 23, 42);
   doc.text(supervisor || project.leadPerson || 'Engr. In-Charge', sig2X + 4, sigY + 12);
@@ -969,7 +978,7 @@ export function generateProjectCostPDF({
   doc.text('NOTED & APPROVED (PROJECT MANAGER):', sig3X + 4, sigY + 5);
   doc.setFontSize(8);
   doc.setTextColor(15, 23, 42);
-  doc.text(projectManager || 'Engr. Roberto Santos', sig3X + 4, sigY + 12);
+  doc.text(project.projectManager || projectManager || 'Engr. Roberto Santos', sig3X + 4, sigY + 12);
   doc.line(sig3X + 4, sigY + 16.5, sig3X + sigColWidth - 6, sigY + 16.5);
   doc.setFontSize(6.5);
   doc.setFont('helvetica', 'normal');

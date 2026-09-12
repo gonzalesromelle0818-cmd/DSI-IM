@@ -91,7 +91,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   onUpdateProject,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Planning' | 'Completed' | 'On Hold'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'For Turn over/Cleaning' | 'Completed' | 'On Hold' | 'Planning'>('all');
   const [selectedProjectForDetails, setSelectedProjectForDetails] = useState<Project | null>(null);
 
   // Retrieve Tickets UI state in bottom section
@@ -279,7 +279,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       project.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       project.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (project.location && project.location.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (project.leadPerson && project.leadPerson.toLowerCase().includes(searchTerm.toLowerCase()));
+      (project.leadPerson && project.leadPerson.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (project.projectManager && project.projectManager.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesStatus =
       statusFilter === 'all' ? true : project.status === statusFilter;
@@ -448,7 +449,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           </div>
 
           <div className="flex items-center space-x-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-            {(['all', 'Active', 'Planning', 'On Hold', 'Completed'] as const).map((st) => (
+            {(['all', 'Active', 'For Turn over/Cleaning', 'On Hold', 'Completed'] as const).map((st) => (
               <button
                 key={st}
                 onClick={() => setStatusFilter(st)}
@@ -508,8 +509,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             const progress = calculateProjectProgress(project);
             const windowsCount = (project.windowsDoors || []).reduce((acc, curr) => acc + (Number(curr.qty) || 1), 0);
 
-            const statusColors = {
+            const statusColors: Record<string, string> = {
               Active: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+              'For Turn over/Cleaning': 'bg-cyan-50 text-cyan-800 border-cyan-200',
               Planning: 'bg-blue-50 text-blue-800 border-blue-200',
               'On Hold': 'bg-amber-50 text-amber-800 border-amber-200',
               Completed: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -583,7 +585,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     <div className="flex items-center space-x-2">
                       <User className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
                       <span className="truncate">
-                        Lead: <strong>{project.leadPerson || <span className="font-normal text-slate-400 italic">Unassigned</span>}</strong>
+                        In-Charge: <strong>{project.leadPerson || <span className="font-normal text-slate-400 italic">Unassigned</span>}</strong>
+                        {project.projectManager && <span className="text-slate-400 font-normal"> • PM: <strong className="text-slate-700">{project.projectManager}</strong></span>}
                       </span>
                     </div>
                   </div>
@@ -646,8 +649,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           retrieveTickets: retrieveTickets || [],
                           inventoryItems: items,
                           preparedBy: "M' Chrissna / Maricel",
-                          supervisor: project.leadPerson,
-                          projectManager: 'Engr. Roberto Santos',
+                          supervisor: project.leadPerson || 'Engr. In-Charge',
+                          projectManager: project.projectManager || 'Engr. Roberto Santos',
                         });
                       }}
                       className="p-1.5 text-slate-500 hover:text-teal-700 bg-slate-50 hover:bg-teal-50 rounded-lg transition-colors cursor-pointer border border-slate-200 hover:border-teal-300"

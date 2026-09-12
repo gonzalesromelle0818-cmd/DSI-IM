@@ -56,7 +56,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onUpdateProject,
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'Planning' | 'Completed' | 'On Hold'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'Active' | 'For Turn over/Cleaning' | 'Completed' | 'On Hold' | 'Planning'>('all');
   const [selectedProjectForDetails, setSelectedProjectForDetails] = useState<Project | null>(null);
 
   // Compute metrics for each project
@@ -231,7 +231,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
       s.project.name.toLowerCase().includes(q) ||
       s.project.id.toLowerCase().includes(q) ||
       (s.project.location && s.project.location.toLowerCase().includes(q)) ||
-      (s.project.leadPerson && s.project.leadPerson.toLowerCase().includes(q));
+      (s.project.leadPerson && s.project.leadPerson.toLowerCase().includes(q)) ||
+      (s.project.projectManager && s.project.projectManager.toLowerCase().includes(q));
 
     const matchesStatus =
       statusFilter === 'all' ? true : (s.project.status || 'Active') === statusFilter;
@@ -440,7 +441,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
             >
               <option value="all">All Statuses</option>
               <option value="Active">Active</option>
-              <option value="Planning">Planning</option>
+              <option value="For Turn over/Cleaning">For Turn over/Cleaning</option>
               <option value="On Hold">On Hold</option>
               <option value="Completed">Completed</option>
             </select>
@@ -490,7 +491,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                             </span>
                           </div>
                           <div className="text-[11px] text-slate-500 truncate max-w-xs">
-                            {p.location || 'Site Location'} {p.leadPerson && `• Lead: ${p.leadPerson}`}
+                            {p.location || 'Site Location'} {p.leadPerson && `• In-Charge: ${p.leadPerson}`} {p.projectManager && `• PM: ${p.projectManager}`}
                           </div>
                         </div>
                       </td>

@@ -431,13 +431,14 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
       retrieveTickets,
       inventoryItems,
       preparedBy: "M' Chrissna / Maricel",
-      supervisor: project.leadPerson,
-      projectManager: 'Engr. Roberto Santos',
+      supervisor: project.leadPerson || 'Engr. In-Charge',
+      projectManager: project.projectManager || 'Engr. Roberto Santos',
     });
   };
 
-  const statusColors = {
+  const statusColors: Record<string, string> = {
     Active: 'bg-emerald-50 text-emerald-800 border-emerald-200',
+    'For Turn over/Cleaning': 'bg-cyan-50 text-cyan-800 border-cyan-200',
     Planning: 'bg-blue-50 text-blue-800 border-blue-200',
     'On Hold': 'bg-amber-50 text-amber-800 border-amber-200',
     Completed: 'bg-slate-100 text-slate-700 border-slate-200',
@@ -486,8 +487,14 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
               </div>
               <div className="flex items-center gap-1.5">
                 <User className="w-3.5 h-3.5 text-teal-400" />
-                <span>Lead: <strong>{project.leadPerson || 'Unassigned'}</strong></span>
+                <span>In-Charge: <strong>{project.leadPerson || 'Unassigned'}</strong></span>
               </div>
+              {project.projectManager && (
+                <div className="flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-teal-400" />
+                  <span>PM: <strong>{project.projectManager}</strong></span>
+                </div>
+              )}
               <div className="flex items-center gap-1.5 text-teal-300 font-medium">
                 <Percent className="w-3.5 h-3.5" />
                 <span>Completion: <strong className="text-white font-bold">{progressStats.percentage}%</strong></span>

@@ -102,12 +102,15 @@ export interface ProjectMilestone {
   remarks?: string;
 }
 
+export type ProjectStatus = 'Active' | 'For Turn over/Cleaning' | 'Completed' | 'On Hold' | 'Planning';
+
 export interface Project {
   id: string; // e.g. "PRJ-001"
   name: string;
   location?: string;
-  leadPerson?: string; // Project In-charge / Engineer
-  status?: 'Active' | 'Planning' | 'Completed' | 'On Hold';
+  leadPerson?: string; // Project In-Charge
+  projectManager?: string; // Project Manager
+  status?: ProjectStatus;
   createdAt?: string;
   startDate?: string;
   targetCompletionDate?: string;

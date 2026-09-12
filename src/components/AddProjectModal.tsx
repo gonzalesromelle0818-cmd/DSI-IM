@@ -25,7 +25,8 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
   const [projectId, setProjectId] = useState(() => generateProjectId());
   const [location, setLocation] = useState('');
   const [leadPerson, setLeadPerson] = useState('');
-  const [status, setStatus] = useState<'Active' | 'Planning' | 'Completed' | 'On Hold'>('Active');
+  const [projectManager, setProjectManager] = useState('');
+  const [status, setStatus] = useState<'Active' | 'For Turn over/Cleaning' | 'Completed' | 'On Hold'>('Active');
   const [budget, setBudget] = useState<string>('');
   const [notes, setNotes] = useState('');
   const [windowsDoors, setWindowsDoors] = useState<WindowDoorItem[]>([]);
@@ -97,6 +98,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
       name: name.trim(),
       location: location.trim() || undefined,
       leadPerson: leadPerson.trim() || undefined,
+      projectManager: projectManager.trim() || undefined,
       status,
       budget: budget ? parseFloat(budget) || undefined : undefined,
       notes: notes.trim() || undefined,
@@ -112,6 +114,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
     setName('');
     setLocation('');
     setLeadPerson('');
+    setProjectManager('');
     setStatus('Active');
     setBudget('');
     setNotes('');
@@ -207,8 +210,8 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
             </div>
           </div>
 
-          {/* Location, Lead, Status & Budget */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Location, In-Charge, Project Manager, Status & Budget */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Site Location
@@ -224,13 +227,26 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
 
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                Project Engineer / Lead
+                Project In-Charge
               </label>
               <input
                 type="text"
                 value={leadPerson}
                 onChange={(e) => setLeadPerson(e.target.value)}
-                placeholder="e.g. Engr. Santos"
+                placeholder="e.g. Engr. Santos / Site In-Charge"
+                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Project Manager
+              </label>
+              <input
+                type="text"
+                value={projectManager}
+                onChange={(e) => setProjectManager(e.target.value)}
+                placeholder="e.g. Engr. Roberto Santos"
                 className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
               />
             </div>
@@ -245,7 +261,7 @@ export const AddProjectModal: React.FC<AddProjectModalProps> = ({
                 className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 cursor-pointer"
               >
                 <option value="Active">Active (Ongoing)</option>
-                <option value="Planning">Planning</option>
+                <option value="For Turn over/Cleaning">For Turn over/Cleaning</option>
                 <option value="On Hold">On Hold</option>
                 <option value="Completed">Completed</option>
               </select>
