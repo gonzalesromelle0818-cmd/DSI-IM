@@ -86,10 +86,6 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
   const [linePersonnelNames, setLinePersonnelNames] = useState('');
   const [lineNotes, setLineNotes] = useState('');
 
-  // Mobilization Cost
-  const [mobilizationCost, setMobilizationCost] = useState<number | ''>(0);
-  const [mobilizationNotes, setMobilizationNotes] = useState('');
-
   // Form validation errors
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -112,6 +108,9 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
         setProjectLocation(p.location || '');
         if (p.leadPerson && !supervisor) {
           setSupervisor(p.leadPerson);
+        }
+        if (p.projectManager && !projectManager) {
+          setProjectManager(p.projectManager);
         }
       }
     }
@@ -221,8 +220,7 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
   // Calculations
   const totalHeads = lines.reduce((sum, l) => sum + l.quantity, 0);
   const totalLaborCost = lines.reduce((sum, l) => sum + l.subtotal, 0);
-  const numMobilization = mobilizationCost === '' ? 0 : Number(mobilizationCost);
-  const grandTotalCost = totalLaborCost + numMobilization;
+  const grandTotalCost = totalLaborCost;
 
   const validateForm = () => {
     const errs: Record<string, string> = {};
@@ -288,10 +286,9 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
       deploymentDate,
       daysCount: duration,
       lines,
-      mobilizationCost: numMobilization,
-      mobilizationNotes: mobilizationNotes.trim() || undefined,
+      mobilizationCost: 0,
       laborCost: totalLaborCost,
-      totalCost: grandTotalCost,
+      totalCost: totalLaborCost,
       status: 'Active On-Site',
       scopeOfWork: scopeOfWork.trim() || undefined,
       vehicleDetails: vehicleDetails.trim() || undefined,
@@ -337,7 +334,7 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Ipadala ang manpower sa site, itakda ang headcount, salary rates, at mobilization cost.
+                Ipadala ang manpower sa site, itakda ang headcount, salary rates, at duration ng trabaho.
               </p>
             </div>
           </div>
@@ -685,77 +682,39 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
             </div>
           </div>
 
-          {/* Section 3: Mobilization Cost & Logistics */}
-          <div className="bg-amber-50/40 p-4.5 rounded-xl border border-amber-200/80 space-y-4">
-            <div className="text-xs font-bold uppercase tracking-wider text-amber-950 flex items-center space-x-2">
-              <Truck className="w-4 h-4 text-amber-700" />
-              <span>3. Mobilization Cost & Logistics</span>
+          {/* Section 3: Scope of Work & Logistics Notes (Optional) */}
+          <div className="bg-slate-50/70 p-4.5 rounded-xl border border-slate-200 space-y-3">
+            <div className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center space-x-2">
+              <FileText className="w-4 h-4 text-teal-600" />
+              <span>3. Scope of Work & Deployment Instructions (Optional)</span>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 items-start">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 items-start">
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Mobilization Cost (PHP ₱) *
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                    ₱
-                  </span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={mobilizationCost}
-                    onChange={(e) =>
-                      setMobilizationCost(e.target.value === '' ? '' : Number(e.target.value))
-                    }
-                    className="w-full pl-7 pr-3 py-2 text-xs font-bold text-slate-900 bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                  />
-                </div>
-                <p className="text-[10px] text-slate-500 mt-1">
-                  Pamasahe, diesel/fuel, toll fees, transpo allowance, o trucking.
-                </p>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Mobilization Remarks / Breakdown
-                </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Van service + Skyway toll + food allowance"
-                  value={mobilizationNotes}
-                  onChange={(e) => setMobilizationNotes(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Vehicle / Driver Info (Optional)
+                  Assigned Vehicle / Transport (Optional)
                 </label>
                 <input
                   type="text"
                   placeholder="e.g. DSI L300 Van (NAE-4819) - Driver Alex"
                   value={vehicleDetails}
                   onChange={(e) => setVehicleDetails(e.target.value)}
-                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
                 />
               </div>
-            </div>
 
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                Scope of Work / Deployment Notes (Optional)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="e.g. Glass curtain wall installation and perimeter silicone sealing at 14th floor."
-                value={scopeOfWork}
-                onChange={(e) => setScopeOfWork(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
-              />
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  Scope of Work / Task Assignment (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Glass curtain wall installation and perimeter silicone sealing at 14th floor."
+                  value={scopeOfWork}
+                  onChange={(e) => setScopeOfWork(e.target.value)}
+                  className="w-full px-3 py-2 text-xs bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500"
+                />
+              </div>
             </div>
           </div>
 
@@ -915,11 +874,11 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
             </div>
           </div>
 
-          {/* Section 5: Grand Total Cost Summary Panel */}
+          {/* Section 4: Manpower Deployment Cost Summary Panel */}
           <div className="p-4 bg-slate-900 text-white rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="space-y-1">
               <span className="text-[10px] uppercase font-bold tracking-wider text-teal-400 block">
-                Deployment Cost Calculation Summary
+                Manpower Deployment Cost Summary
               </span>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300">
                 <span>
@@ -927,21 +886,21 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
                 </span>
                 <span>•</span>
                 <span>
-                  Labor Cost: <strong className="text-white">{formatCurrency(totalLaborCost)}</strong>
+                  Duration: <strong className="text-white">{Number(daysCount) || 1} Day(s)</strong>
                 </span>
                 <span>•</span>
                 <span>
-                  Mobilization: <strong className="text-white">{formatCurrency(numMobilization)}</strong>
+                  Roles: <strong className="text-white">{lines.length} Position(s)</strong>
                 </span>
               </div>
             </div>
 
             <div className="text-right">
               <span className="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold">
-                Grand Total Deployment Expense
+                Total Manpower Labor Cost
               </span>
               <div className="text-xl font-black text-teal-300">
-                {formatCurrency(grandTotalCost)}
+                {formatCurrency(totalLaborCost)}
               </div>
             </div>
           </div>

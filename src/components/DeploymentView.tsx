@@ -25,6 +25,8 @@ import {
   PenTool,
   UserCheck,
   ShieldCheck,
+  CalendarDays,
+  BarChart3,
 } from 'lucide-react';
 import {
   DeploymentTicket,
@@ -38,12 +40,14 @@ import {
 } from '../utils/deploymentHelpers';
 import { generateDeploymentPDF } from '../utils/generateDeploymentPDF';
 import { DeploymentSlipModal } from './DeploymentSlipModal';
+import { DeploymentScheduleView } from './DeploymentScheduleView';
 
 interface DeploymentViewProps {
   tickets: DeploymentTicket[];
   projects: Project[];
   manpowerRates: ManpowerPositionRate[];
   onOpenAddModal: () => void;
+  onOpenAddMobilizationModal: () => void;
   onOpenRemoveModal: () => void;
   onOpenManageRates: () => void;
   onDeleteTicket: (ticketId: string) => void;
@@ -57,6 +61,7 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
   projects,
   manpowerRates,
   onOpenAddModal,
+  onOpenAddMobilizationModal,
   onOpenRemoveModal,
   onOpenManageRates,
   onDeleteTicket,
@@ -64,6 +69,7 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
   onNavigateToProjects,
   onNavigateToInventory,
 }) => {
+  const [activeSubTab, setActiveSubTab] = useState<'tickets' | 'schedule'>('tickets');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedProjectFilter, setSelectedProjectFilter] = useState('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
@@ -154,6 +160,16 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
           </button>
 
           <button
+            id="btn-add-mobilization"
+            onClick={onOpenAddMobilizationModal}
+            className="px-4 py-2 text-xs font-bold text-slate-900 bg-amber-400 hover:bg-amber-300 border border-amber-500/30 rounded-lg shadow-sm hover:shadow transition-all flex items-center space-x-1.5 cursor-pointer"
+            title="Add Mobilization Cost & Logistics Ticket"
+          >
+            <Truck className="w-4 h-4 text-slate-950" />
+            <span>Add Mobilization Cost</span>
+          </button>
+
+          <button
             onClick={onOpenManageRates}
             className="px-3.5 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors flex items-center space-x-1.5 cursor-pointer"
             title="Manage Salary & Daily Rates"
@@ -196,7 +212,59 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
         </div>
       </div>
 
-      {/* KPI Stats Bar */}
+      {/* Sub-Navigation Tabs: Deployment Tickets vs Schedule (Gantt Chart) */}
+      <div className="flex items-center space-x-2 border-b border-slate-200 pb-2">
+        <button
+          id="tab-deployment-tickets"
+          onClick={() => setActiveSubTab('tickets')}
+          className={`px-4 py-2 text-xs font-bold rounded-lg flex items-center space-x-2 transition-all cursor-pointer ${
+            activeSubTab === 'tickets'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/80'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>Deployment Tickets</span>
+          <span
+            className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+              activeSubTab === 'tickets' ? 'bg-teal-400 text-slate-900' : 'bg-slate-100 text-slate-600'
+            }`}
+          >
+            {tickets.length}
+          </span>
+        </button>
+
+        <button
+          id="tab-deployment-schedule"
+          onClick={() => setActiveSubTab('schedule')}
+          className={`px-4 py-2 text-xs font-bold rounded-lg flex items-center space-x-2 transition-all cursor-pointer ${
+            activeSubTab === 'schedule'
+              ? 'bg-slate-900 text-white shadow-sm'
+              : 'bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-slate-200/80'
+          }`}
+        >
+          <CalendarDays className="w-4 h-4 text-teal-400" />
+          <span>Schedule (Gantt Chart)</span>
+          <span
+            className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-bold ${
+              activeSubTab === 'schedule' ? 'bg-teal-400 text-slate-900' : 'bg-teal-50 text-teal-700 border border-teal-200'
+            }`}
+          >
+            {tickets.filter((t) => t.status === 'Active On-Site' || t.status === 'Scheduled').length} active
+          </span>
+        </button>
+      </div>
+
+      {activeSubTab === 'schedule' ? (
+        <DeploymentScheduleView
+          tickets={tickets}
+          projects={projects}
+          onViewTicketSlip={(ticket) => setSlipTicket(ticket)}
+          onNavigateToAddDeployment={onOpenAddModal}
+        />
+      ) : (
+        <>
+          {/* KPI Stats Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Total Tickets */}
         <div className="bg-white rounded-xl p-4 border border-slate-200 shadow-2xs flex items-center justify-between">
@@ -488,10 +556,17 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
 
                       {/* Positions Summary Badge Bar */}
                       <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                        <span className="text-[11px] font-bold text-teal-900 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 flex items-center space-x-1">
-                          <HardHat className="w-3 h-3 text-teal-600" />
-                          <span>{totalHeads} Heads</span>
-                        </span>
+                        {totalHeads > 0 ? (
+                          <span className="text-[11px] font-bold text-teal-900 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 flex items-center space-x-1">
+                            <HardHat className="w-3 h-3 text-teal-600" />
+                            <span>{totalHeads} Heads</span>
+                          </span>
+                        ) : (
+                          <span className="text-[11px] font-bold text-amber-950 bg-amber-100 px-2 py-0.5 rounded border border-amber-300 flex items-center space-x-1">
+                            <Truck className="w-3 h-3 text-amber-700" />
+                            <span>Mobilization & Logistics</span>
+                          </span>
+                        )}
 
                         {ticket.lines.map((l, idx) => (
                           <span
@@ -502,7 +577,7 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
                           </span>
                         ))}
 
-                        {ticket.mobilizationCost > 0 && (
+                        {ticket.mobilizationCost > 0 && totalHeads > 0 && (
                           <span className="text-[11px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 flex items-center space-x-1">
                             <Truck className="w-3 h-3 text-amber-600" />
                             <span>Mob: {formatCurrency(ticket.mobilizationCost)}</span>
@@ -738,6 +813,8 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
           </div>
         )}
       </div>
+      </>
+      )}
 
       {/* Official Deployment Slip Viewer Modal */}
       <DeploymentSlipModal

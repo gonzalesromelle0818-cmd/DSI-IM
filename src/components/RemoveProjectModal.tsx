@@ -262,7 +262,8 @@ export const RemoveProjectModal: React.FC<RemoveProjectModalProps> = ({
                           </div>
                           <div className="text-xs text-slate-500 mt-0.5 flex items-center space-x-3">
                             {project.location && <span>{project.location}</span>}
-                            {project.leadPerson && <span>• Lead: {project.leadPerson}</span>}
+                            {project.leadPerson && <span>• In-Charge: {project.leadPerson}</span>}
+                            {project.projectManager && <span>• PM: {project.projectManager}</span>}
                             {activeAllocations > 0 && (
                               <span className="text-amber-700 font-semibold bg-amber-50 px-1.5 py-0.5 rounded">
                                 {activeAllocations} units deployed

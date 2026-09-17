@@ -190,36 +190,50 @@ export const DeploymentSlipModal: React.FC<DeploymentSlipModalProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-200 bg-white">
-                {ticket.lines.map((line, idx) => (
-                  <tr key={idx} className="hover:bg-slate-50">
-                    <td className="p-2.5 text-center font-mono text-slate-500">{idx + 1}</td>
-                    <td className="p-2.5 font-bold text-slate-900">{line.role}</td>
-                    <td className="p-2.5 text-center font-bold text-teal-800 bg-teal-50/50">
-                      {line.quantity} pax
-                    </td>
-                    <td className="p-2.5 text-center text-slate-600">{line.days} day(s)</td>
-                    <td className="p-2.5 text-right text-slate-700">
-                      ₱{line.dailyRate.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="p-2.5 text-right font-bold text-emerald-800">
-                      {formatCurrency(line.subtotal)}
-                    </td>
-                    <td className="p-2.5 text-slate-600">
-                      {line.personnelNames && line.personnelNames.length > 0 ? (
-                        <span className="font-medium text-slate-800">
-                          {line.personnelNames.join(', ')}
-                        </span>
-                      ) : (
-                        '—'
-                      )}
-                      {line.notes && (
-                        <span className="text-[10px] text-slate-500 block italic mt-0.5">
-                          {line.notes}
-                        </span>
-                      )}
+                {ticket.lines.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="p-4 text-center text-slate-500 bg-amber-50/40">
+                      <div className="flex items-center justify-center space-x-2 text-amber-900 font-semibold">
+                        <Truck className="w-4 h-4 text-amber-600" />
+                        <span>Mobilization & Logistics Deployment (No direct manpower labor charges)</span>
+                      </div>
+                      <span className="text-[11px] text-slate-500 block mt-1">
+                        Amount allocated: {formatCurrency(ticket.mobilizationCost)} {ticket.mobilizationNotes ? `— ${ticket.mobilizationNotes}` : ''}
+                      </span>
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  ticket.lines.map((line, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50">
+                      <td className="p-2.5 text-center font-mono text-slate-500">{idx + 1}</td>
+                      <td className="p-2.5 font-bold text-slate-900">{line.role}</td>
+                      <td className="p-2.5 text-center font-bold text-teal-800 bg-teal-50/50">
+                        {line.quantity} pax
+                      </td>
+                      <td className="p-2.5 text-center text-slate-600">{line.days} day(s)</td>
+                      <td className="p-2.5 text-right text-slate-700">
+                        ₱{line.dailyRate.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="p-2.5 text-right font-bold text-emerald-800">
+                        {formatCurrency(line.subtotal)}
+                      </td>
+                      <td className="p-2.5 text-slate-600">
+                        {line.personnelNames && line.personnelNames.length > 0 ? (
+                          <span className="font-medium text-slate-800">
+                            {line.personnelNames.join(', ')}
+                          </span>
+                        ) : (
+                          '—'
+                        )}
+                        {line.notes && (
+                          <span className="text-[10px] text-slate-500 block italic mt-0.5">
+                            {line.notes}
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

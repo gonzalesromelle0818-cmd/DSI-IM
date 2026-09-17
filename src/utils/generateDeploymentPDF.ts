@@ -112,24 +112,36 @@ export function generateDeploymentPDF({
   currentY += headerBoxHeight + 3;
 
   // 3. TABLE OF DEPLOYED MANPOWER
-  const tableData = ticket.lines.map((line, index) => {
-    const personnelStr = line.personnelNames && line.personnelNames.length > 0
-      ? ` [${line.personnelNames.join(', ')}]`
-      : '';
-    const remarks = (line.notes || '') + personnelStr;
-    const dailyRateStr = `₱${line.dailyRate.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    const subtotalStr = `₱${line.subtotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const tableData = ticket.lines.length > 0
+    ? ticket.lines.map((line, index) => {
+        const personnelStr = line.personnelNames && line.personnelNames.length > 0
+          ? ` [${line.personnelNames.join(', ')}]`
+          : '';
+        const remarks = (line.notes || '') + personnelStr;
+        const dailyRateStr = `₱${line.dailyRate.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        const subtotalStr = `₱${line.subtotal.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-    return [
-      (index + 1).toString(),
-      line.role,
-      line.quantity.toString(),
-      `${line.days} day(s)`,
-      dailyRateStr,
-      subtotalStr,
-      remarks || '—',
-    ];
-  });
+        return [
+          (index + 1).toString(),
+          line.role,
+          line.quantity.toString(),
+          `${line.days} day(s)`,
+          dailyRateStr,
+          subtotalStr,
+          remarks || '—',
+        ];
+      })
+    : [
+        [
+          '1',
+          'Mobilization & Logistics (Trucking / Pamasahe / Diesel / Toll)',
+          '—',
+          `${ticket.daysCount || 1} day(s)`,
+          '—',
+          `₱${ticket.mobilizationCost.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+          ticket.mobilizationNotes || ticket.vehicleDetails || 'Site Logistics & Mobilization',
+        ],
+      ];
 
   const totalHeads = ticket.lines.reduce((s, l) => s + l.quantity, 0);
 
