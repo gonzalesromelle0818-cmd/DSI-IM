@@ -37,6 +37,7 @@ import {
   formatCurrency,
   getTotalHeadcount,
   exportDeploymentToCSV,
+  isDriverOrLogistics,
 } from '../utils/deploymentHelpers';
 import { generateDeploymentPDF } from '../utils/generateDeploymentPDF';
 import { DeploymentSlipModal } from './DeploymentSlipModal';
@@ -47,7 +48,7 @@ interface DeploymentViewProps {
   projects: Project[];
   manpowerRates: ManpowerPositionRate[];
   onOpenAddModal: () => void;
-  onOpenAddMobilizationModal: () => void;
+  onOpenAddMobilizationModal?: () => void;
   onOpenRemoveModal: () => void;
   onOpenManageRates: () => void;
   onDeleteTicket: (ticketId: string) => void;
@@ -61,7 +62,6 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
   projects,
   manpowerRates,
   onOpenAddModal,
-  onOpenAddMobilizationModal,
   onOpenRemoveModal,
   onOpenManageRates,
   onDeleteTicket,
@@ -106,18 +106,30 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
     return matchesSearch && matchesProject && matchesStatus;
   });
 
-  // KPI Calculations
+  // KPI Calculations (deriving mobilization cost from Driver/Logistics roles)
   const totalTickets = tickets.length;
   const totalHeadsDispatched = tickets.reduce(
     (sum, t) => sum + getTotalHeadcount(t.lines),
     0
   );
-  const totalLaborCost = tickets.reduce((sum, t) => sum + (t.laborCost || 0), 0);
-  const totalMobilizationCost = tickets.reduce(
-    (sum, t) => sum + (t.mobilizationCost || 0),
-    0
-  );
-  const grandTotalCost = tickets.reduce((sum, t) => sum + (t.totalCost || 0), 0);
+  const totalLaborCost = tickets.reduce((sum, t) => {
+    const driverCost = t.lines
+      .filter((l) => isDriverOrLogistics(l.role))
+      .reduce((acc, l) => acc + (l.subtotal || 0), 0);
+    const workerLabor = t.lines
+      .filter((l) => !isDriverOrLogistics(l.role))
+      .reduce((acc, l) => acc + (l.subtotal || 0), 0);
+    return sum + (driverCost > 0 ? workerLabor : (t.laborCost || 0));
+  }, 0);
+
+  const totalMobilizationCost = tickets.reduce((sum, t) => {
+    const driverCost = t.lines
+      .filter((l) => isDriverOrLogistics(l.role))
+      .reduce((acc, l) => acc + (l.subtotal || 0), 0);
+    return sum + (driverCost > 0 ? driverCost : (t.mobilizationCost || 0));
+  }, 0);
+
+  const grandTotalCost = totalLaborCost + totalMobilizationCost;
 
   const handleDownloadPDF = (ticket: DeploymentTicket) => {
     const project = projects.find((p) => p.id === ticket.projectId);
@@ -157,16 +169,6 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
           >
             <Plus className="w-4 h-4" />
             <span>Add Deployment</span>
-          </button>
-
-          <button
-            id="btn-add-mobilization"
-            onClick={onOpenAddMobilizationModal}
-            className="px-4 py-2 text-xs font-bold text-slate-900 bg-amber-400 hover:bg-amber-300 border border-amber-500/30 rounded-lg shadow-sm hover:shadow transition-all flex items-center space-x-1.5 cursor-pointer"
-            title="Add Mobilization Cost & Logistics Ticket"
-          >
-            <Truck className="w-4 h-4 text-slate-950" />
-            <span>Add Mobilization Cost</span>
           </button>
 
           <button
@@ -495,6 +497,17 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
               const isExpanded = expandedTicketId === ticket.id;
               const totalHeads = getTotalHeadcount(ticket.lines);
 
+              const driverCost = ticket.lines
+                .filter((l) => isDriverOrLogistics(l.role))
+                .reduce((acc, l) => acc + (l.subtotal || 0), 0);
+              const workerLaborCost = ticket.lines
+                .filter((l) => !isDriverOrLogistics(l.role))
+                .reduce((acc, l) => acc + (l.subtotal || 0), 0);
+
+              const ticketMobCost = driverCost > 0 ? driverCost : (ticket.mobilizationCost || 0);
+              const ticketLaborCost = driverCost > 0 ? workerLaborCost : (ticket.laborCost || 0);
+              const ticketGrandTotal = ticketLaborCost + ticketMobCost;
+
               const statusColorMap = {
                 'Active On-Site': 'bg-emerald-50 text-emerald-800 border-emerald-200',
                 Scheduled: 'bg-blue-50 text-blue-800 border-blue-200',
@@ -577,10 +590,10 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
                           </span>
                         ))}
 
-                        {ticket.mobilizationCost > 0 && totalHeads > 0 && (
+                        {ticketMobCost > 0 && totalHeads > 0 && (
                           <span className="text-[11px] font-bold text-amber-900 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 flex items-center space-x-1">
                             <Truck className="w-3 h-3 text-amber-600" />
-                            <span>Mob: {formatCurrency(ticket.mobilizationCost)}</span>
+                            <span>Mob: {formatCurrency(ticketMobCost)}</span>
                           </span>
                         )}
                       </div>
@@ -593,10 +606,10 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
                           Total Cost
                         </span>
                         <span className="text-base font-extrabold text-emerald-800 block">
-                          {formatCurrency(ticket.totalCost)}
+                          {formatCurrency(ticketGrandTotal)}
                         </span>
                         <span className="text-[10px] text-slate-500">
-                          Labor: {formatCurrency(ticket.laborCost)}
+                          Labor: {formatCurrency(ticketLaborCost)}
                         </span>
                       </div>
 
@@ -679,39 +692,52 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
                             <div className="col-span-3 text-right">Subtotal</div>
                           </div>
 
-                          {ticket.lines.map((line, idx) => (
-                            <div
-                              key={idx}
-                              className="px-3.5 py-2 text-xs grid grid-cols-12 gap-2 items-center hover:bg-slate-50"
-                            >
-                              <div className="col-span-3 font-bold text-slate-900">
-                                {line.role}
-                                {line.personnelNames && line.personnelNames.length > 0 && (
-                                  <div className="text-[10px] text-slate-500 font-normal">
-                                    {line.personnelNames.join(', ')}
+                          {ticket.lines.map((line, idx) => {
+                            const isMobRole = isDriverOrLogistics(line.role);
+                            return (
+                              <div
+                                key={idx}
+                                className={`px-3.5 py-2 text-xs grid grid-cols-12 gap-2 items-center hover:bg-slate-50 ${
+                                  isMobRole ? 'bg-amber-50/30' : ''
+                                }`}
+                              >
+                                <div className="col-span-3 font-bold text-slate-900">
+                                  <div className="flex items-center space-x-1.5 flex-wrap">
+                                    <span>{line.role}</span>
+                                    {isMobRole && (
+                                      <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.2 rounded inline-flex items-center space-x-1">
+                                        <Truck className="w-3 h-3 text-amber-600" />
+                                        <span>Mobilization</span>
+                                      </span>
+                                    )}
                                   </div>
-                                )}
-                              </div>
+                                  {line.personnelNames && line.personnelNames.length > 0 && (
+                                    <div className="text-[10px] text-slate-500 font-normal">
+                                      {line.personnelNames.join(', ')}
+                                    </div>
+                                  )}
+                                </div>
 
-                              <div className="col-span-2 text-center">
-                                <span className="font-bold text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 text-xs">
-                                  {line.quantity} pax
-                                </span>
-                              </div>
+                                <div className="col-span-2 text-center">
+                                  <span className="font-bold text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 text-xs">
+                                    {line.quantity} pax
+                                  </span>
+                                </div>
 
-                              <div className="col-span-2 text-right text-slate-700 font-medium">
-                                ₱{line.dailyRate.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                              </div>
+                                <div className="col-span-2 text-right text-slate-700 font-medium">
+                                  ₱{line.dailyRate.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                                </div>
 
-                              <div className="col-span-2 text-center text-slate-600">
-                                {line.days} day(s)
-                              </div>
+                                <div className="col-span-2 text-center text-slate-600">
+                                  {line.days} day(s)
+                                </div>
 
-                              <div className="col-span-3 text-right font-bold text-emerald-800">
-                                {formatCurrency(line.subtotal)}
+                                <div className="col-span-3 text-right font-bold text-emerald-800">
+                                  {formatCurrency(line.subtotal)}
+                                </div>
                               </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
 
                         {/* Logistics & Scope Notes */}
@@ -736,12 +762,12 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
                             </span>
                             <div className="flex justify-between text-[11px]">
                               <span className="text-slate-500">Labor Subtotal:</span>
-                              <span className="font-bold text-slate-800">{formatCurrency(ticket.laborCost)}</span>
+                              <span className="font-bold text-slate-800">{formatCurrency(ticketLaborCost)}</span>
                             </div>
                             <div className="flex justify-between text-[11px]">
-                              <span className="text-slate-500">Mobilization Cost:</span>
+                              <span className="text-slate-500">Mobilization Cost (Driver/Logistics):</span>
                               <span className="font-bold text-amber-800">
-                                {formatCurrency(ticket.mobilizationCost)}
+                                {formatCurrency(ticketMobCost)}
                                 {ticket.mobilizationNotes && (
                                   <span className="font-normal text-[10px] text-slate-400 block text-right">
                                     ({ticket.mobilizationNotes})
@@ -751,7 +777,7 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
                             </div>
                             <div className="flex justify-between text-xs font-bold pt-1 border-t border-slate-100">
                               <span className="text-slate-800">Total Deployment Cost:</span>
-                              <span className="text-emerald-800 font-extrabold">{formatCurrency(ticket.totalCost)}</span>
+                              <span className="text-emerald-800 font-extrabold">{formatCurrency(ticketGrandTotal)}</span>
                             </div>
                           </div>
                         </div>

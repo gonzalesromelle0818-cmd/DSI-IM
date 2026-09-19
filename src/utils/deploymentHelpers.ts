@@ -21,6 +21,15 @@ export function getTotalHeadcount(lines: DeploymentManpowerLine[]): number {
 }
 
 /**
+ * Check if a manpower role represents Driver / Logistics / Mobilization
+ */
+export function isDriverOrLogistics(role: string): boolean {
+  if (!role) return false;
+  const r = role.toLowerCase();
+  return r.includes('driver') || r.includes('logistics') || r.includes('mobilization');
+}
+
+/**
  * Export deployment tickets to CSV
  */
 export function exportDeploymentToCSV(tickets: DeploymentTicket[]) {

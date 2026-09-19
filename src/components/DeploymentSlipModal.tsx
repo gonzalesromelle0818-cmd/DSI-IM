@@ -12,7 +12,7 @@ import {
   Briefcase,
 } from 'lucide-react';
 import { DeploymentTicket, Project } from '../types';
-import { formatCurrency, getTotalHeadcount } from '../utils/deploymentHelpers';
+import { formatCurrency, getTotalHeadcount, isDriverOrLogistics } from '../utils/deploymentHelpers';
 import { generateDeploymentPDF } from '../utils/generateDeploymentPDF';
 
 interface DeploymentSlipModalProps {
@@ -32,6 +32,21 @@ export const DeploymentSlipModal: React.FC<DeploymentSlipModalProps> = ({
 
   const project = projects.find((p) => p.id === ticket.projectId);
   const totalHeads = getTotalHeadcount(ticket.lines);
+
+  // Derive mobilization and labor costs dynamically from Driver/Logistics
+  const driverLogisticsLineCost = ticket.lines
+    .filter((l) => isDriverOrLogistics(l.role))
+    .reduce((sum, l) => sum + l.subtotal, 0);
+
+  const displayMobilizationCost = driverLogisticsLineCost > 0
+    ? driverLogisticsLineCost
+    : (ticket.mobilizationCost || 0);
+
+  const displayLaborCost = driverLogisticsLineCost > 0
+    ? ticket.lines.filter((l) => !isDriverOrLogistics(l.role)).reduce((sum, l) => sum + l.subtotal, 0)
+    : (ticket.laborCost ?? (ticket.totalCost - displayMobilizationCost));
+
+  const displayTotalCost = displayLaborCost + displayMobilizationCost;
 
   const handleDownloadPDF = () => {
     generateDeploymentPDF({
@@ -203,36 +218,49 @@ export const DeploymentSlipModal: React.FC<DeploymentSlipModalProps> = ({
                     </td>
                   </tr>
                 ) : (
-                  ticket.lines.map((line, idx) => (
-                    <tr key={idx} className="hover:bg-slate-50">
-                      <td className="p-2.5 text-center font-mono text-slate-500">{idx + 1}</td>
-                      <td className="p-2.5 font-bold text-slate-900">{line.role}</td>
-                      <td className="p-2.5 text-center font-bold text-teal-800 bg-teal-50/50">
-                        {line.quantity} pax
-                      </td>
-                      <td className="p-2.5 text-center text-slate-600">{line.days} day(s)</td>
-                      <td className="p-2.5 text-right text-slate-700">
-                        ₱{line.dailyRate.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
-                      </td>
-                      <td className="p-2.5 text-right font-bold text-emerald-800">
-                        {formatCurrency(line.subtotal)}
-                      </td>
-                      <td className="p-2.5 text-slate-600">
-                        {line.personnelNames && line.personnelNames.length > 0 ? (
-                          <span className="font-medium text-slate-800">
-                            {line.personnelNames.join(', ')}
-                          </span>
-                        ) : (
-                          '—'
-                        )}
-                        {line.notes && (
-                          <span className="text-[10px] text-slate-500 block italic mt-0.5">
-                            {line.notes}
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
+                  ticket.lines.map((line, idx) => {
+                    const isMobRole = isDriverOrLogistics(line.role);
+                    return (
+                      <tr key={idx} className={`hover:bg-slate-50 ${isMobRole ? 'bg-amber-50/30' : ''}`}>
+                        <td className="p-2.5 text-center font-mono text-slate-500">{idx + 1}</td>
+                        <td className="p-2.5 font-bold text-slate-900">
+                          <div className="flex items-center space-x-1.5">
+                            <span>{line.role}</span>
+                            {isMobRole && (
+                              <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.2 rounded inline-flex items-center space-x-1">
+                                <Truck className="w-3 h-3 text-amber-600" />
+                                <span>Mobilization</span>
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="p-2.5 text-center font-bold text-teal-800 bg-teal-50/50">
+                          {line.quantity} pax
+                        </td>
+                        <td className="p-2.5 text-center text-slate-600">{line.days} day(s)</td>
+                        <td className="p-2.5 text-right text-slate-700">
+                          ₱{line.dailyRate.toLocaleString('en-PH', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="p-2.5 text-right font-bold text-emerald-800">
+                          {formatCurrency(line.subtotal)}
+                        </td>
+                        <td className="p-2.5 text-slate-600">
+                          {line.personnelNames && line.personnelNames.length > 0 ? (
+                            <span className="font-medium text-slate-800">
+                              {line.personnelNames.join(', ')}
+                            </span>
+                          ) : (
+                            '—'
+                          )}
+                          {line.notes && (
+                            <span className="text-[10px] text-slate-500 block italic mt-0.5">
+                              {line.notes}
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -262,11 +290,11 @@ export const DeploymentSlipModal: React.FC<DeploymentSlipModalProps> = ({
               </div>
               <div className="flex justify-between items-center text-slate-600">
                 <span>Subtotal Labor Cost:</span>
-                <span className="font-semibold text-slate-900">{formatCurrency(ticket.laborCost)}</span>
+                <span className="font-semibold text-slate-900">{formatCurrency(displayLaborCost)}</span>
               </div>
               <div className="flex justify-between items-center text-slate-600">
-                <span>Mobilization Cost:</span>
-                <span className="font-semibold text-slate-900">{formatCurrency(ticket.mobilizationCost)}</span>
+                <span>Mobilization Cost (Driver/Logistics):</span>
+                <span className="font-semibold text-slate-900">{formatCurrency(displayMobilizationCost)}</span>
               </div>
               {ticket.mobilizationNotes && (
                 <p className="text-[10px] text-slate-500 italic text-right">
@@ -275,7 +303,7 @@ export const DeploymentSlipModal: React.FC<DeploymentSlipModalProps> = ({
               )}
               <div className="flex justify-between items-center pt-2 border-t border-slate-300 text-sm font-black text-slate-900">
                 <span>Total Deployment Cost:</span>
-                <span className="text-emerald-700">{formatCurrency(ticket.totalCost)}</span>
+                <span className="text-emerald-700">{formatCurrency(displayTotalCost)}</span>
               </div>
             </div>
           </div>

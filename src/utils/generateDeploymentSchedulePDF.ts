@@ -77,12 +77,15 @@ export function generateDeploymentSchedulePDF({
   const kpiBoxWidth = (contentWidth - 12) / 5;
   const kpiHeight = 12;
 
+  const formatPHP = (amt: number) =>
+    'PHP ' + Number(amt || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
   const kpis = [
     { label: 'ACTIVE ON-SITE', val: `${activeTickets} ticket(s)`, bg: [236, 253, 245], text: [4, 120, 87] },
     { label: 'SCHEDULED UPCOMING', val: `${scheduledTickets} ticket(s)`, bg: [239, 246, 255], text: [29, 78, 216] },
     { label: 'COMPLETED DEPLOYMENTS', val: `${completedTickets} ticket(s)`, bg: [241, 245, 249], text: [71, 85, 105] },
     { label: 'TOTAL WORKFORCE DEPLOYED', val: `${totalHeads} head(s)`, bg: [240, 253, 250], text: [13, 148, 136] },
-    { label: 'OVERALL DEPLOYMENT COST', val: formatCurrency(totalCost), bg: [254, 252, 232], text: [161, 98, 7] },
+    { label: 'OVERALL DEPLOYMENT COST', val: formatPHP(totalCost), bg: [254, 252, 232], text: [161, 98, 7] },
   ];
 
   kpis.forEach((kpi, idx) => {
@@ -101,7 +104,7 @@ export function generateDeploymentSchedulePDF({
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(kpi.text[0], kpi.text[1], kpi.text[2]);
-    doc.text(kpi.val, kpiX + 3, currentY + 9.5);
+    doc.text(kpi.val, kpiX + 3, currentY + 9.5, { maxWidth: kpiBoxWidth - 6 });
   });
 
   currentY += kpiHeight + 6;
@@ -131,7 +134,7 @@ export function generateDeploymentSchedulePDF({
       `${headcount} heads\n${rolesSummary}`,
       `Lead: ${supervisor}\nPM: ${projManager}`,
       t.status,
-      formatCurrency(t.totalCost || 0),
+      formatPHP(t.totalCost || 0),
     ];
   });
 

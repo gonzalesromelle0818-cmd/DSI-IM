@@ -39,8 +39,8 @@ export function generateRetrievePDF({
   // 2. HEADER BOXES
   const headerBoxY = currentY;
   const headerBoxHeight = 16;
-  const leftColWidth = 175;
-  const rightColWidth = contentWidth - leftColWidth; // ~92mm
+  const leftColWidth = 160;
+  const rightColWidth = contentWidth - leftColWidth; // ~107mm
   const midX = marginX + leftColWidth;
 
   // Outer Border & Grid Lines for Header
@@ -59,7 +59,7 @@ export function generateRetrievePDF({
   doc.line(marginX + leftLabelWidth, headerBoxY, marginX + leftLabelWidth, headerBoxY + headerBoxHeight);
 
   // Divider between labels and values on right side
-  const rightLabelWidth = 46;
+  const rightLabelWidth = 44;
   doc.line(midX + rightLabelWidth, headerBoxY, midX + rightLabelWidth, headerBoxY + headerBoxHeight);
 
   // Format Date to MM/DD/YYYY
@@ -76,33 +76,41 @@ export function generateRetrievePDF({
   }
 
   // Row 1 Text
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setFont('helvetica', 'bold');
-  doc.text('RETURNED FROM:', marginX + 2, headerBoxY + 5.5);
+  doc.text('RETURNED FROM:', marginX + 2.5, headerBoxY + 5.5);
 
   doc.setFont('helvetica', 'normal');
   const projectLabel = `[${ticket.projectId}] ${ticket.projectName}`;
-  doc.text(projectLabel, marginX + leftLabelWidth + 3, headerBoxY + 5.5);
+  doc.text(projectLabel, marginX + leftLabelWidth + 2.5, headerBoxY + 5.5, {
+    maxWidth: leftColWidth - leftLabelWidth - 5,
+  });
 
   doc.setFont('helvetica', 'bold');
-  doc.text('RETRIEVE FORM NO:', midX + 2, headerBoxY + 5.5);
+  doc.text('RETRIEVE FORM NO:', midX + 2.5, headerBoxY + 5.5);
 
   doc.setFont('helvetica', 'normal');
-  doc.text(ticket.id, midX + rightLabelWidth + 3, headerBoxY + 5.5);
+  doc.text(ticket.id, midX + rightLabelWidth + 2.5, headerBoxY + 5.5, {
+    maxWidth: rightColWidth - rightLabelWidth - 5,
+  });
 
   // Row 2 Text
   doc.setFont('helvetica', 'bold');
-  doc.text('SITE ADDRESS:', marginX + 2, headerBoxY + 13.5);
+  doc.text('SITE ADDRESS:', marginX + 2.5, headerBoxY + 13.5);
 
   doc.setFont('helvetica', 'normal');
   const addressText = ticket.projectLocation || project?.location || 'Site Location';
-  doc.text(addressText, marginX + leftLabelWidth + 3, headerBoxY + 13.5);
+  doc.text(addressText, marginX + leftLabelWidth + 2.5, headerBoxY + 13.5, {
+    maxWidth: leftColWidth - leftLabelWidth - 5,
+  });
 
   doc.setFont('helvetica', 'bold');
-  doc.text('RETURN DATE :', midX + 2, headerBoxY + 13.5);
+  doc.text('RETURN DATE :', midX + 2.5, headerBoxY + 13.5);
 
   doc.setFont('helvetica', 'normal');
-  doc.text(formattedDate, midX + rightLabelWidth + 3, headerBoxY + 13.5);
+  doc.text(formattedDate, midX + rightLabelWidth + 2.5, headerBoxY + 13.5, {
+    maxWidth: rightColWidth - rightLabelWidth - 5,
+  });
 
   currentY += headerBoxHeight + 6;
 
@@ -219,7 +227,7 @@ export function generateRetrievePDF({
 
     // Name Value
     doc.setFont('helvetica', 'normal');
-    doc.text(sig.value, sigLineStartX + 2, sigY);
+    doc.text(sig.value, sigLineStartX + 2, sigY, { maxWidth: sigLineWidth - 4 });
 
     // Underline
     doc.setDrawColor(0, 0, 0);

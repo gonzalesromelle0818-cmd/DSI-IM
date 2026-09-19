@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Project, PullOutTicket, DeploymentTicket, RetrieveTicket, InventoryItem } from '../types';
 import { calculateProjectProgress, getInitialProjectChecklist } from './projectMilestones';
+import { isDriverOrLogistics } from './deploymentHelpers';
 
 interface ProjectCostPDFOptions {
   project: Project;
@@ -196,14 +197,24 @@ export function generateProjectCostPDF({
 
   const netMaterialCost = Math.max(0, grossMaterialCost - totalRetrievedCost);
 
-  // Calculate manpower & mobilization costs
+  // Calculate manpower & mobilization costs (deriving mobilization cost from Driver/Logistics)
   let totalLaborCost = 0;
   let totalMobilizationCost = 0;
   let totalHeadsDeployed = 0;
 
   relatedDeployments.forEach((dep) => {
-    totalLaborCost += dep.laborCost || 0;
-    totalMobilizationCost += dep.mobilizationCost || 0;
+    const driverCost = dep.lines
+      .filter((l) => isDriverOrLogistics(l.role))
+      .reduce((acc, l) => acc + (l.subtotal || 0), 0);
+    const workerLaborCost = dep.lines
+      .filter((l) => !isDriverOrLogistics(l.role))
+      .reduce((acc, l) => acc + (l.subtotal || 0), 0);
+
+    const mobCost = driverCost > 0 ? driverCost : (dep.mobilizationCost || 0);
+    const labCost = driverCost > 0 ? workerLaborCost : (dep.laborCost || 0);
+
+    totalLaborCost += labCost;
+    totalMobilizationCost += mobCost;
     const heads = dep.lines.reduce((acc, l) => acc + (l.quantity || 0), 0);
     totalHeadsDeployed += heads;
   });
@@ -261,92 +272,73 @@ export function generateProjectCostPDF({
 
   // 2. PROJECT METADATA CARD (Box)
   const metaBoxY = currentY;
-  const metaBoxHeight = 28;
+  const metaBoxHeight = 31;
   doc.setDrawColor(203, 213, 225); // slate-300
   doc.setFillColor(248, 250, 252); // slate-50
   doc.roundedRect(marginX, metaBoxY, contentWidth, metaBoxHeight, 2, 2, 'FD');
 
+  const leftColW = 90;
+  const rightColX = marginX + leftColW + 4;
+  const rightColW = contentWidth - leftColW - 4; // ~88mm
+
   // Left Column: Project Details
-  doc.setFontSize(8);
+  doc.setFontSize(7.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text('PROJECT ID:', marginX + 3, metaBoxY + 5.5);
+  doc.text('PROJECT ID:', marginX + 3.5, metaBoxY + 5.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(project.id, marginX + 26, metaBoxY + 5.5);
+  doc.text(project.id, marginX + 27, metaBoxY + 5.5, { maxWidth: leftColW - 29 });
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text('PROJECT NAME:', marginX + 3, metaBoxY + 11);
+  doc.text('PROJECT NAME:', marginX + 3.5, metaBoxY + 12);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(project.name, marginX + 26, metaBoxY + 11);
+  doc.text(project.name, marginX + 27, metaBoxY + 12, { maxWidth: leftColW - 29 });
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text('SITE LOCATION:', marginX + 3, metaBoxY + 16.5);
+  doc.text('SITE LOCATION:', marginX + 3.5, metaBoxY + 18.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(51, 65, 85);
-  doc.text(project.location || 'N/A', marginX + 26, metaBoxY + 16.5);
+  doc.text(project.location || 'N/A', marginX + 27, metaBoxY + 18.5, { maxWidth: leftColW - 29 });
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text('TARGET DATE:', marginX + 3, metaBoxY + 22.5);
+  doc.text('TARGET DATE:', marginX + 3.5, metaBoxY + 25);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(51, 65, 85);
-  doc.text(project.targetCompletionDate || project.startDate || 'Not specified', marginX + 26, metaBoxY + 22.5);
+  doc.text(project.targetCompletionDate || project.startDate || 'Not specified', marginX + 27, metaBoxY + 25, { maxWidth: leftColW - 29 });
 
   // Right Column: In-Charge, PM, Status, Total Expense
-  const rightColX = marginX + 104;
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text('PROJECT IN-CHARGE:', rightColX, metaBoxY + 5.5);
+  doc.text('IN-CHARGE:', rightColX, metaBoxY + 5.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(project.leadPerson || supervisor || 'Unassigned', rightColX + 38, metaBoxY + 5.5);
-
-  if (project.projectManager || projectManager) {
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(71, 85, 105);
-    doc.text('PROJECT MANAGER:', rightColX, metaBoxY + 10);
-    doc.setFont('helvetica', 'bold');
-    doc.setTextColor(15, 23, 42);
-    doc.text(project.projectManager || projectManager || 'Engr. Roberto Santos', rightColX + 38, metaBoxY + 10);
-  }
+  doc.text(project.leadPerson || supervisor || 'Unassigned', rightColX + 28, metaBoxY + 5.5, { maxWidth: rightColW - 30 });
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text('STATUS:', rightColX, metaBoxY + 14.5);
+  doc.text('PROJ. MANAGER:', rightColX, metaBoxY + 12);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text(project.projectManager || projectManager || 'Engr. Roberto Santos', rightColX + 28, metaBoxY + 12, { maxWidth: rightColW - 30 });
+
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(71, 85, 105);
+  doc.text('PROGRESS:', rightColX, metaBoxY + 18.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(13, 148, 136);
-  doc.text(project.status || 'Active', rightColX + 38, metaBoxY + 14.5);
+  doc.text(`${progress.percentage}% (${project.status || 'Active'})`, rightColX + 28, metaBoxY + 18.5, { maxWidth: rightColW - 30 });
 
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(71, 85, 105);
-  doc.text('PROGRESS STATUS:', rightColX, metaBoxY + 16.5);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(15, 118, 110);
-  doc.text(`${progress.percentage}% (${progress.completedMilestonesCount}/14 Done)`, rightColX + 34, metaBoxY + 16.5);
-
-  // Visual Progress Indicator Mini Bar
-  const pBarX = rightColX + 34;
-  const pBarY = metaBoxY + 18.2;
-  const pBarWidth = 44;
-  const pBarHeight = 2.2;
-  doc.setFillColor(226, 232, 240); // slate-200
-  doc.roundedRect(pBarX, pBarY, pBarWidth, pBarHeight, 1, 1, 'F');
-  const fillW = Math.max(0, Math.min(pBarWidth, (progress.percentage / 100) * pBarWidth));
-  if (fillW > 0) {
-    doc.setFillColor(13, 148, 136); // teal-600
-    doc.roundedRect(pBarX, pBarY, fillW, pBarHeight, 1, 1, 'F');
-  }
-
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(71, 85, 105);
-  doc.text('TOTAL EXPENSE:', rightColX, metaBoxY + 24);
+  doc.text('TOTAL EXPENSE:', rightColX, metaBoxY + 25);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text(formatPHP(grandTotalCost), rightColX + 34, metaBoxY + 24);
+  doc.text(formatPHP(grandTotalCost), rightColX + 28, metaBoxY + 25, { maxWidth: rightColW - 30 });
 
   currentY += metaBoxHeight + 6;
 
@@ -862,6 +854,17 @@ export function generateProjectCostPDF({
     currentY += 10;
   } else {
     const depTableRows = relatedDeployments.map((d, idx) => {
+      const driverCost = d.lines
+        .filter((l) => isDriverOrLogistics(l.role))
+        .reduce((acc, l) => acc + (l.subtotal || 0), 0);
+      const workerLaborCost = d.lines
+        .filter((l) => !isDriverOrLogistics(l.role))
+        .reduce((acc, l) => acc + (l.subtotal || 0), 0);
+
+      const mobCost = driverCost > 0 ? driverCost : (d.mobilizationCost || 0);
+      const labCost = driverCost > 0 ? workerLaborCost : (d.laborCost || 0);
+      const depTotal = labCost + mobCost;
+
       const rolesSummary = d.lines.map((l) => `${l.quantity}x ${l.role}`).join(', ');
       return [
         (idx + 1).toString(),
@@ -869,15 +872,15 @@ export function generateProjectCostPDF({
         d.id,
         `${d.daysCount} day(s)`,
         rolesSummary || 'Personnel',
-        formatPHP(d.laborCost),
-        formatPHP(d.mobilizationCost),
-        formatPHP(d.totalCost),
+        formatPHP(labCost),
+        formatPHP(mobCost),
+        formatPHP(depTotal),
       ];
     });
 
     autoTable(doc, {
       startY: currentY,
-      head: [['#', 'Date', 'Ticket #', 'Days', 'Deployed Positions / Heads', 'Labor Cost', 'Mobilization', 'Total Cost']],
+      head: [['#', 'Date', 'Ticket #', 'Days', 'Deployed Positions / Heads', 'Labor Cost', 'Mobilization (Driver)', 'Total Cost']],
       body: depTableRows,
       theme: 'grid',
       margin: { left: marginX, right: marginX },
@@ -940,50 +943,52 @@ export function generateProjectCostPDF({
   doc.setFillColor(248, 250, 252); // slate-50
   doc.roundedRect(marginX, sigY, contentWidth, 24, 2, 2, 'FD');
 
+  const sigTextWidth = sigColWidth - 8;
+
   // Prepared by
   doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(100, 116, 139);
-  doc.text('PREPARED BY (INVENTORY / ADMIN):', marginX + 4, sigY + 5);
+  doc.text('PREPARED BY (INVENTORY / ADMIN):', marginX + 4, sigY + 5, { maxWidth: sigTextWidth });
   doc.setFontSize(8);
   doc.setTextColor(15, 23, 42);
-  doc.text(preparedBy || "M' Chrissna / Maricel", marginX + 4, sigY + 12);
+  doc.text(preparedBy || "M' Chrissna / Maricel", marginX + 4, sigY + 12, { maxWidth: sigTextWidth });
   doc.setDrawColor(203, 213, 225);
   doc.line(marginX + 4, sigY + 16.5, marginX + sigColWidth - 6, sigY + 16.5);
   doc.setFontSize(6.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
-  doc.text(`Date: ${dateGenerated}`, marginX + 4, sigY + 20.5);
+  doc.text(`Date: ${dateGenerated}`, marginX + 4, sigY + 20.5, { maxWidth: sigTextWidth });
 
   // Checked / In-Charge
   const sig2X = marginX + sigColWidth;
   doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(100, 116, 139);
-  doc.text('CHECKED BY (PROJECT IN-CHARGE):', sig2X + 4, sigY + 5);
+  doc.text('CHECKED BY (PROJECT IN-CHARGE):', sig2X + 4, sigY + 5, { maxWidth: sigTextWidth });
   doc.setFontSize(8);
   doc.setTextColor(15, 23, 42);
-  doc.text(supervisor || project.leadPerson || 'Engr. In-Charge', sig2X + 4, sigY + 12);
+  doc.text(supervisor || project.leadPerson || 'Engr. In-Charge', sig2X + 4, sigY + 12, { maxWidth: sigTextWidth });
   doc.line(sig2X + 4, sigY + 16.5, sig2X + sigColWidth - 6, sigY + 16.5);
   doc.setFontSize(6.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
-  doc.text(`Date: ${dateGenerated}`, sig2X + 4, sigY + 20.5);
+  doc.text(`Date: ${dateGenerated}`, sig2X + 4, sigY + 20.5, { maxWidth: sigTextWidth });
 
   // Approved / Project Manager
   const sig3X = marginX + sigColWidth * 2;
   doc.setFontSize(7);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(100, 116, 139);
-  doc.text('NOTED & APPROVED (PROJECT MANAGER):', sig3X + 4, sigY + 5);
+  doc.text('NOTED & APPROVED (PROJECT MANAGER):', sig3X + 4, sigY + 5, { maxWidth: sigTextWidth });
   doc.setFontSize(8);
   doc.setTextColor(15, 23, 42);
-  doc.text(project.projectManager || projectManager || 'Engr. Roberto Santos', sig3X + 4, sigY + 12);
+  doc.text(project.projectManager || projectManager || 'Engr. Roberto Santos', sig3X + 4, sigY + 12, { maxWidth: sigTextWidth });
   doc.line(sig3X + 4, sigY + 16.5, sig3X + sigColWidth - 6, sigY + 16.5);
   doc.setFontSize(6.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(100, 116, 139);
-  doc.text(`Date: ${dateGenerated}`, sig3X + 4, sigY + 20.5);
+  doc.text(`Date: ${dateGenerated}`, sig3X + 4, sigY + 20.5, { maxWidth: sigTextWidth });
 
   currentY = sigY + 28;
 
@@ -1010,12 +1015,14 @@ export function generateProjectCostPDF({
   doc.text(
     'This official Project Cost & Milestone Progress Report was automatically compiled from verified warehouse pull-outs, return slips, and site deployments.',
     marginX + 4,
-    noticeBoxY + 9
+    noticeBoxY + 9,
+    { maxWidth: contentWidth - 8 }
   );
   doc.text(
     `Project: [${project.id}] ${project.name} | Progress: ${progress.percentage}% (${progress.completedMilestonesCount}/14 Done) | Verified as of: ${new Date().toLocaleString('en-US')}`,
     marginX + 4,
-    noticeBoxY + 13
+    noticeBoxY + 13,
+    { maxWidth: contentWidth - 8 }
   );
 
   // 10. PAGE NUMBERS (Draw on all pages)

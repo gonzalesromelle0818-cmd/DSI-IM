@@ -24,7 +24,7 @@ import {
   Project,
   ManpowerPositionRate,
 } from '../types';
-import { formatCurrency } from '../utils/deploymentHelpers';
+import { formatCurrency, isDriverOrLogistics } from '../utils/deploymentHelpers';
 
 interface AddDeploymentModalProps {
   isOpen: boolean;
@@ -219,8 +219,13 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
 
   // Calculations
   const totalHeads = lines.reduce((sum, l) => sum + l.quantity, 0);
-  const totalLaborCost = lines.reduce((sum, l) => sum + l.subtotal, 0);
-  const grandTotalCost = totalLaborCost;
+  const workerLaborCost = lines
+    .filter((l) => !isDriverOrLogistics(l.role))
+    .reduce((sum, l) => sum + l.subtotal, 0);
+  const mobilizationCost = lines
+    .filter((l) => isDriverOrLogistics(l.role))
+    .reduce((sum, l) => sum + l.subtotal, 0);
+  const grandTotalCost = workerLaborCost + mobilizationCost;
 
   const validateForm = () => {
     const errs: Record<string, string> = {};
@@ -276,6 +281,12 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
 
     const duration = Number(daysCount) || 1;
 
+    // Mobilization notes from Driver/Logistics lines if any
+    const driverLines = lines.filter((l) => isDriverOrLogistics(l.role));
+    const driverNotes = driverLines
+      .map((l) => l.notes || `${l.quantity}x ${l.role}`)
+      .join(', ');
+
     const newTicket: DeploymentTicket = {
       id: ticketIdPreview,
       projectId: targetProjectId,
@@ -286,9 +297,10 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
       deploymentDate,
       daysCount: duration,
       lines,
-      mobilizationCost: 0,
-      laborCost: totalLaborCost,
-      totalCost: totalLaborCost,
+      mobilizationCost,
+      laborCost: workerLaborCost,
+      totalCost: grandTotalCost,
+      mobilizationNotes: driverNotes || undefined,
       status: 'Active On-Site',
       scopeOfWork: scopeOfWork.trim() || undefined,
       vehicleDetails: vehicleDetails.trim() || undefined,
@@ -502,10 +514,16 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
                   >
                     {manpowerRates.map((r) => (
                       <option key={r.id} value={r.role}>
-                        {r.role} (₱{r.dailyRate.toLocaleString()}/day)
+                        {r.role} (₱{r.dailyRate.toLocaleString()}/day){isDriverOrLogistics(r.role) ? ' 🚚 [Mobilization]' : ''}
                       </option>
                     ))}
                   </select>
+                  {isDriverOrLogistics(selectedRole) && (
+                    <p className="text-[10.5px] text-amber-800 font-medium mt-1.5 flex items-center gap-1.5 bg-amber-50 border border-amber-200 px-2 py-1 rounded-md">
+                      <Truck className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+                      <span>Ang posisyong ito ay papasok bilang <strong>Mobilization Cost</strong> sa ticket at PDF report.</span>
+                    </p>
+                  )}
                 </div>
 
                 {/* Headcount Quantity */}
@@ -597,13 +615,19 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
               <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1.5 flex items-center justify-between">
                 <span>Manpower in this Ticket ({lines.length} Roles)</span>
                 {lines.length > 0 && (
-                  <div className="flex items-center space-x-3 text-xs">
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
                     <span className="text-teal-800 font-bold bg-teal-100/80 px-2 py-0.5 rounded">
                       {totalHeads} Total Heads
                     </span>
                     <span className="text-emerald-800 font-bold bg-emerald-100/80 px-2 py-0.5 rounded">
-                      Labor Subtotal: {formatCurrency(totalLaborCost)}
+                      Labor: {formatCurrency(workerLaborCost)}
                     </span>
+                    {mobilizationCost > 0 && (
+                      <span className="text-amber-800 font-bold bg-amber-100/80 px-2 py-0.5 rounded flex items-center space-x-1">
+                        <Truck className="w-3 h-3 text-amber-700" />
+                        <span>Mobilization: {formatCurrency(mobilizationCost)}</span>
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
@@ -619,7 +643,7 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
                   <Users className="w-6 h-6 mx-auto text-slate-300" />
                   <p className="font-semibold text-slate-600">No manpower added yet.</p>
                   <p className="text-[11px]">
-                    Pumili ng position sa itaas (e.g. Foreman, Installer, Labor) at i-click ang <strong>"Add to Ticket"</strong>.
+                    Pumili ng position sa itaas (e.g. Foreman, Installer, Labor, Driver / Logistics) at i-click ang <strong>"Add to Ticket"</strong>.
                   </p>
                 </div>
               ) : (
@@ -633,19 +657,31 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
                     <div className="col-span-1 text-center">Action</div>
                   </div>
 
-                  {lines.map((line, idx) => (
-                    <div
-                      key={idx}
-                      className="px-3.5 py-2.5 text-xs grid grid-cols-12 gap-2 items-center hover:bg-slate-50/70"
-                    >
-                      <div className="col-span-3">
-                        <div className="font-bold text-slate-900">{line.role}</div>
-                        {line.personnelNames && line.personnelNames.length > 0 && (
-                          <div className="text-[10px] text-slate-500 truncate">
-                            {line.personnelNames.join(', ')}
+                  {lines.map((line, idx) => {
+                    const isMobRole = isDriverOrLogistics(line.role);
+                    return (
+                      <div
+                        key={idx}
+                        className={`px-3.5 py-2.5 text-xs grid grid-cols-12 gap-2 items-center hover:bg-slate-50/70 ${
+                          isMobRole ? 'bg-amber-50/30' : ''
+                        }`}
+                      >
+                        <div className="col-span-3">
+                          <div className="font-bold text-slate-900 flex items-center flex-wrap gap-1">
+                            <span>{line.role}</span>
+                            {isMobRole && (
+                              <span className="text-[10px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-1.5 py-0.2 rounded inline-flex items-center space-x-1">
+                                <Truck className="w-3 h-3 text-amber-600" />
+                                <span>Mobilization</span>
+                              </span>
+                            )}
                           </div>
-                        )}
-                      </div>
+                          {line.personnelNames && line.personnelNames.length > 0 && (
+                            <div className="text-[10px] text-slate-500 truncate">
+                              {line.personnelNames.join(', ')}
+                            </div>
+                          )}
+                        </div>
 
                       <div className="col-span-2 text-center">
                         <span className="font-extrabold text-teal-900 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
@@ -676,7 +712,8 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
                         </button>
                       </div>
                     </div>
-                  ))}
+                  );
+                })}
                 </div>
               )}
             </div>
@@ -875,10 +912,10 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
           </div>
 
           {/* Section 4: Manpower Deployment Cost Summary Panel */}
-          <div className="p-4 bg-slate-900 text-white rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="space-y-1">
+          <div className="p-4 bg-slate-900 text-white rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-1.5">
               <span className="text-[10px] uppercase font-bold tracking-wider text-teal-400 block">
-                Manpower Deployment Cost Summary
+                Deployment & Mobilization Cost Breakdown
               </span>
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-300">
                 <span>
@@ -890,17 +927,21 @@ export const AddDeploymentModal: React.FC<AddDeploymentModalProps> = ({
                 </span>
                 <span>•</span>
                 <span>
-                  Roles: <strong className="text-white">{lines.length} Position(s)</strong>
+                  Labor Subtotal: <strong className="text-teal-300">{formatCurrency(workerLaborCost)}</strong>
+                </span>
+                <span>•</span>
+                <span>
+                  Mobilization Cost (Driver/Logistics): <strong className="text-amber-300">{formatCurrency(mobilizationCost)}</strong>
                 </span>
               </div>
             </div>
 
-            <div className="text-right">
+            <div className="text-right shrink-0">
               <span className="text-[10px] uppercase tracking-wider text-slate-400 block font-semibold">
-                Total Manpower Labor Cost
+                Grand Total Deployment Cost
               </span>
-              <div className="text-xl font-black text-teal-300">
-                {formatCurrency(totalLaborCost)}
+              <div className="text-2xl font-black text-teal-300">
+                {formatCurrency(grandTotalCost)}
               </div>
             </div>
           </div>

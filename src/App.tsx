@@ -30,7 +30,6 @@ import { RemoveProjectModal } from './components/RemoveProjectModal';
 import { AddPullOutModal } from './components/AddPullOutModal';
 import { RemovePullOutModal } from './components/RemovePullOutModal';
 import { AddDeploymentModal } from './components/AddDeploymentModal';
-import { AddMobilizationModal } from './components/AddMobilizationModal';
 import { RemoveDeploymentModal } from './components/RemoveDeploymentModal';
 import { AddRetrieveModal } from './components/AddRetrieveModal';
 import { RemoveRetrieveModal } from './components/RemoveRetrieveModal';
@@ -334,7 +333,6 @@ export default function App() {
   const [isAddPullOutModalOpen, setIsAddPullOutModalOpen] = useState(false);
   const [isRemovePullOutModalOpen, setIsRemovePullOutModalOpen] = useState(false);
   const [isAddDeploymentModalOpen, setIsAddDeploymentModalOpen] = useState(false);
-  const [isAddMobilizationModalOpen, setIsAddMobilizationModalOpen] = useState(false);
   const [isRemoveDeploymentModalOpen, setIsRemoveDeploymentModalOpen] = useState(false);
   const [isAddRetrieveModalOpen, setIsAddRetrieveModalOpen] = useState(false);
   const [isRemoveRetrieveModalOpen, setIsRemoveRetrieveModalOpen] = useState(false);
@@ -1107,7 +1105,6 @@ export default function App() {
               projects={projects}
               manpowerRates={manpowerRates}
               onOpenAddModal={() => setIsAddDeploymentModalOpen(true)}
-              onOpenAddMobilizationModal={() => setIsAddMobilizationModalOpen(true)}
               onOpenRemoveModal={() => setIsRemoveDeploymentModalOpen(true)}
               onOpenManageRates={() => setIsManageRatesModalOpen(true)}
               onDeleteTicket={handleDeleteDeployment}
@@ -1242,19 +1239,6 @@ export default function App() {
         existingTickets={deploymentTickets}
         onAddDeployment={handleAddDeployment}
         onOpenManageRates={() => setIsManageRatesModalOpen(true)}
-        onOpenAddProjectModal={() => {
-          setCurrentTab('projects');
-          setIsAddProjectModalOpen(true);
-        }}
-      />
-
-      {/* Add Mobilization Cost Modal */}
-      <AddMobilizationModal
-        isOpen={isAddMobilizationModalOpen}
-        onClose={() => setIsAddMobilizationModalOpen(false)}
-        projects={projects}
-        existingTickets={deploymentTickets}
-        onAddMobilization={handleAddDeployment}
         onOpenAddProjectModal={() => {
           setCurrentTab('projects');
           setIsAddProjectModalOpen(true);
