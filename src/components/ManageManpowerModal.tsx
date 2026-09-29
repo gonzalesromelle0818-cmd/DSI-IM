@@ -114,9 +114,6 @@ export const ManageManpowerModal: React.FC<ManageManpowerModalProps> = ({
     <div
       id="manage-manpower-modal-backdrop"
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div
         id="manage-manpower-modal-card"

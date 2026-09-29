@@ -85,9 +85,6 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
     <div
       id="edit-item-modal-overlay"
       className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden my-8">
         {/* Header */}

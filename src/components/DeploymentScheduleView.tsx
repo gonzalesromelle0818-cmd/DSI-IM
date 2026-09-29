@@ -730,11 +730,9 @@ export const DeploymentScheduleView: React.FC<DeploymentScheduleViewProps> = ({
       {selectedTicketForDetail && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
-          onClick={() => setSelectedTicketForDetail(null)}
         >
           <div
             className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150"
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-start justify-between border-b border-slate-100 pb-3">
               <div>

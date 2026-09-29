@@ -448,9 +448,6 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
     <div
       id="project-details-modal-overlay"
       className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/70 backdrop-blur-xs overflow-y-auto"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div
         id="project-details-modal-container"

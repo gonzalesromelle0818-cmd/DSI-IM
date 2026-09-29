@@ -185,11 +185,6 @@ export const RemoveItemModal: React.FC<RemoveItemModalProps> = ({
     <div
       id="remove-item-modal-overlay"
       className="fixed inset-0 z-50 bg-slate-900/65 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !itemPendingDeletion && !isConfirmingBatchDelete) {
-          onClose();
-        }
-      }}
     >
       <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl overflow-hidden my-6 flex flex-col max-h-[92vh] relative">
         {/* Header */}

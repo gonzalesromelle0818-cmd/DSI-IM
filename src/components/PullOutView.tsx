@@ -419,9 +419,6 @@ export const PullOutView: React.FC<PullOutViewProps> = ({
       {ticketToPrint && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setTicketToPrint(null);
-          }}
         >
           <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 p-6 space-y-5">
             <div className="flex items-center justify-between border-b pb-3">

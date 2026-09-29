@@ -214,9 +214,6 @@ export const AddItemModal: React.FC<AddItemModalProps> = ({
     <div
       id="add-item-modal-overlay"
       className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-fadeIn"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
     >
       <div
         id="add-item-modal-container"
