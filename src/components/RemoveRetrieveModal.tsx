@@ -21,6 +21,7 @@ export const RemoveRetrieveModal: React.FC<RemoveRetrieveModalProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [rollbackStock, setRollbackStock] = useState(true);
   const [ticketToDelete, setTicketToDelete] = useState<RetrieveTicket | null>(null);
+  const [isBulkDeleteConfirm, setIsBulkDeleteConfirm] = useState(false);
 
   if (!isOpen) return null;
 
@@ -226,16 +227,57 @@ export const RemoveRetrieveModal: React.FC<RemoveRetrieveModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setTicketToDelete(null)}
-                  className="px-3 py-1.5 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
                 >
-                  Kanselahin
+                  Hindi, Huwag Burahin (No, Cancel)
                 </button>
                 <button
                   type="button"
                   onClick={executeSingleDelete}
-                  className="px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition-colors cursor-pointer"
+                  className="px-3.5 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition-colors cursor-pointer"
                 >
-                  Burahin ang Ticket
+                  Oo, Burahin ang Ticket (Yes, Delete)
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Bulk Delete Confirmation Box */}
+          {isBulkDeleteConfirm && (
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-3 animate-in fade-in zoom-in-95 duration-150">
+              <div className="flex items-start space-x-2 text-rose-900 text-xs">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-bold">
+                    Sigurado ka bang buburahin ang {selectedIds.length} napiling Retrieve Tickets?
+                  </span>
+                  <p className="text-[11px] text-rose-700 mt-0.5">
+                    Tickets: {selectedIds.join(', ')}
+                  </p>
+                  {rollbackStock && (
+                    <p className="text-[11px] text-emerald-800 font-semibold mt-1">
+                      ✓ Ang mga naibalik na stock ay kusang ibabawas pabalik sa bodega.
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center justify-end space-x-2">
+                <button
+                  type="button"
+                  onClick={() => setIsBulkDeleteConfirm(false)}
+                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+                >
+                  Hindi, Huwag Burahin (No, Cancel)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    executeBulkDelete();
+                    setIsBulkDeleteConfirm(false);
+                  }}
+                  className="px-3.5 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-xs transition-colors cursor-pointer"
+                >
+                  Oo, Burahin ang ({selectedIds.length}) Slips (Yes, Delete)
                 </button>
               </div>
             </div>
@@ -263,7 +305,7 @@ export const RemoveRetrieveModal: React.FC<RemoveRetrieveModalProps> = ({
             {selectedIds.length > 0 && (
               <button
                 type="button"
-                onClick={executeBulkDelete}
+                onClick={() => setIsBulkDeleteConfirm(true)}
                 className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition-all flex items-center space-x-1.5 cursor-pointer"
               >
                 <Trash2 className="w-3.5 h-3.5" />

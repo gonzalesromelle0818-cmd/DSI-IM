@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { PullOutTicket, Project, InventoryItem } from '../types';
 import { generatePullOutPDF } from '../utils/generatePullOutPDF';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 interface PullOutViewProps {
   tickets: PullOutTicket[];
@@ -46,6 +47,8 @@ export const PullOutView: React.FC<PullOutViewProps> = ({
   const [selectedProjectFilter, setSelectedProjectFilter] = useState('all');
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
   const [ticketToPrint, setTicketToPrint] = useState<PullOutTicket | null>(null);
+  const [ticketPendingDelete, setTicketPendingDelete] = useState<PullOutTicket | null>(null);
+  const [returnStockOnDelete, setReturnStockOnDelete] = useState<boolean>(true);
 
   const toggleExpand = (id: string) => {
     setExpandedTicketId((prev) => (prev === id ? null : id));
@@ -357,9 +360,12 @@ export const PullOutView: React.FC<PullOutViewProps> = ({
 
                       <button
                         type="button"
-                        onClick={() => onDeleteTicket(ticket.id, true)}
-                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors ml-1"
-                        title="Cancel & return stock to warehouse"
+                        onClick={() => {
+                          setReturnStockOnDelete(true);
+                          setTicketPendingDelete(ticket);
+                        }}
+                        className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors ml-1 cursor-pointer"
+                        title="Delete pull out ticket (with confirmation)"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -493,6 +499,44 @@ export const PullOutView: React.FC<PullOutViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Yes or No Delete Confirmation Modal */}
+      <ConfirmDeleteModal
+        isOpen={!!ticketPendingDelete}
+        onClose={() => setTicketPendingDelete(null)}
+        onConfirm={() => {
+          if (ticketPendingDelete) {
+            onDeleteTicket(ticketPendingDelete.id, returnStockOnDelete);
+            setTicketPendingDelete(null);
+          }
+        }}
+        title="Kumpirmahin ang Pagbura ng Pull Out Ticket"
+        entityTypeLabel="Pull Out Slip"
+        itemTitle={`Ticket: ${ticketPendingDelete?.id || ''} — ${ticketPendingDelete?.projectName || ''}`}
+        itemSubtitle={`Requested by: ${ticketPendingDelete?.requestedBy || ''} • Date: ${ticketPendingDelete?.date || ''}`}
+        message="Sigurado ka ba na gusto mong burahin ang Pull Out Ticket na ito? Aalisin ito sa talaan ng system."
+        details={
+          ticketPendingDelete
+            ? [
+                { label: 'Ticket ID', value: ticketPendingDelete.id },
+                { label: 'Project Name', value: ticketPendingDelete.projectName },
+                { label: 'Requested By', value: ticketPendingDelete.requestedBy },
+                {
+                  label: 'Dispatched Units',
+                  value: `${ticketPendingDelete.items.reduce((s, i) => s + i.quantity, 0)} units (${ticketPendingDelete.items.length} lines)`,
+                },
+              ]
+            : []
+        }
+        optionCheckbox={{
+          label: 'Ibalik ang stock sa warehouse inventory',
+          description: 'Kusang idaragdag pabalik sa available warehouse stock ang mga nai-pull out na materyales.',
+          checked: returnStockOnDelete,
+          onChange: setReturnStockOnDelete,
+        }}
+        confirmButtonText="Oo, Burahin (Yes, Delete)"
+        cancelButtonText="Hindi, Huwag Burahin (No, Cancel)"
+      />
     </div>
   );
 };

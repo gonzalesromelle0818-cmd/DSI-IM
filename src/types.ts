@@ -235,3 +235,35 @@ export interface RetrieveTicket {
   createdAt: string;
 }
 
+export type DeletableEntityType =
+  | 'inventory_item'
+  | 'pull_out_ticket'
+  | 'deployment_ticket'
+  | 'purchase_record'
+  | 'project'
+  | 'retrieve_ticket'
+  | 'batch_inventory'
+  | 'batch_pull_out'
+  | 'batch_deployment'
+  | 'batch_purchases'
+  | 'batch_retrieve'
+  | 'batch_projects'
+  | 'all_inventory';
+
+export interface DeletedHistoryAction {
+  id: string;
+  entityType: DeletableEntityType;
+  title: string;
+  subtitle?: string;
+  timestamp: string;
+  data: any;
+  previousStateSnapshot?: {
+    items?: InventoryItem[];
+    projects?: Project[];
+    pullOutTickets?: PullOutTicket[];
+    deploymentTickets?: DeploymentTicket[];
+    purchases?: PurchaseRecord[];
+    retrieveTickets?: RetrieveTicket[];
+  };
+}
+

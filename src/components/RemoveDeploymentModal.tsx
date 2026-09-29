@@ -30,6 +30,7 @@ export const RemoveDeploymentModal: React.FC<RemoveDeploymentModalProps> = ({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [ticketToDelete, setTicketToDelete] = useState<DeploymentTicket | null>(null);
+  const [isBulkDeleteConfirm, setIsBulkDeleteConfirm] = useState(false);
 
   if (!isOpen) return null;
 
@@ -150,8 +151,8 @@ export const RemoveDeploymentModal: React.FC<RemoveDeploymentModalProps> = ({
                   {selectedIds.length > 0 && (
                     <button
                       type="button"
-                      onClick={executeBulkDelete}
-                      className="px-3 py-1 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm transition-colors flex items-center space-x-1"
+                      onClick={() => setIsBulkDeleteConfirm(true)}
+                      className="px-3 py-1 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm transition-colors flex items-center space-x-1 cursor-pointer"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                       <span>Delete Selected ({selectedIds.length})</span>
@@ -243,16 +244,55 @@ export const RemoveDeploymentModal: React.FC<RemoveDeploymentModalProps> = ({
                 <button
                   type="button"
                   onClick={() => setTicketToDelete(null)}
-                  className="px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-white rounded-lg border border-slate-200"
+                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white bg-slate-100 rounded-lg border border-slate-200 cursor-pointer"
                 >
-                  Cancel
+                  Hindi, Huwag Burahin (No, Cancel)
                 </button>
                 <button
                   type="button"
                   onClick={executeSingleDelete}
-                  className="px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm cursor-pointer"
+                  className="px-3.5 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm cursor-pointer"
                 >
-                  Yes, Remove Ticket
+                  Oo, Burahin ang Ticket (Yes, Delete)
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Delete Bulk Confirmation Box */}
+          {isBulkDeleteConfirm && (
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl space-y-3 animate-in fade-in">
+              <div className="flex items-start space-x-3">
+                <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-rose-900">
+                  <p className="font-bold text-sm">
+                    Sigurado ka bang buburahin ang {selectedIds.length} napiling Deployment tickets?
+                  </p>
+                  <p className="mt-1">
+                    Tickets to delete: {selectedIds.join(', ')}
+                  </p>
+                  <p className="mt-1 text-slate-600">
+                    Aalisin ang talaan ng manpower at deployment costs ng mga napiling ticket na ito.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center justify-end space-x-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsBulkDeleteConfirm(false)}
+                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white bg-slate-100 rounded-lg border border-slate-200 cursor-pointer"
+                >
+                  Hindi, Huwag Burahin (No, Cancel)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    executeBulkDelete();
+                    setIsBulkDeleteConfirm(false);
+                  }}
+                  className="px-3.5 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm cursor-pointer"
+                >
+                  Oo, Burahin ang ({selectedIds.length}) Tickets (Yes, Delete)
                 </button>
               </div>
             </div>

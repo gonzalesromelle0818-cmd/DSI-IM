@@ -14,8 +14,9 @@ import {
   Upload,
   HardDriveDownload,
   HardDriveUpload,
+  RotateCcw,
 } from 'lucide-react';
-import { TabType } from '../types';
+import { TabType, DeletedHistoryAction } from '../types';
 import { AuthUser } from '../utils/authService';
 
 interface TopNavProps {
@@ -29,6 +30,8 @@ interface TopNavProps {
   user?: AuthUser | null;
   onLogout?: () => void;
   onChangePassword?: () => void;
+  onRequestUndo?: () => void;
+  deletedAction?: DeletedHistoryAction | null;
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
@@ -42,6 +45,8 @@ export const TopNav: React.FC<TopNavProps> = ({
   user,
   onLogout,
   onChangePassword,
+  onRequestUndo,
+  deletedAction,
 }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -148,6 +153,34 @@ export const TopNav: React.FC<TopNavProps> = ({
             <span className="hidden sm:inline">Upload Data</span>
             <span className="sm:hidden text-[11px]">Upload</span>
           </button>
+
+          {/* Universal Undo Button */}
+          {onRequestUndo && (
+            <button
+              id="btn-undo-action"
+              type="button"
+              onClick={onRequestUndo}
+              disabled={!deletedAction}
+              title={
+                deletedAction
+                  ? `I-Undo ang pinakahuling binurang data: ${deletedAction.title}`
+                  : 'Walang kamakailang binurang data na ma-i-undo'
+              }
+              className={`flex items-center space-x-1.5 px-2.5 py-1.5 text-xs font-bold rounded-lg transition-all shadow-2xs active:scale-95 ${
+                deletedAction
+                  ? 'bg-amber-50 text-amber-900 border border-amber-300 hover:bg-amber-100 cursor-pointer ring-1 ring-amber-400'
+                  : 'bg-slate-50 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
+              }`}
+            >
+              <RotateCcw className={`w-3.5 h-3.5 ${deletedAction ? 'text-amber-700' : 'text-slate-400'}`} />
+              <span className="hidden sm:inline">Undo</span>
+              {deletedAction && (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-amber-500 text-white">
+                  1
+                </span>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Quick Reset Mock Data if user wants clean slate */}

@@ -48,6 +48,7 @@ import { ProjectDetailsModal } from './ProjectDetailsModal';
 import { generateProjectCostPDF } from '../utils/generateProjectCostPDF';
 import { generateRetrievePDF } from '../utils/generateRetrievePDF';
 import { calculateProjectProgress } from '../utils/projectMilestones';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 interface ProjectsViewProps {
   projects: Project[];
@@ -104,6 +105,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const [cardPasswordInput, setCardPasswordInput] = useState('');
   const [cardPasswordError, setCardPasswordError] = useState('');
   const [showCardPassword, setShowCardPassword] = useState(false);
+  const [retrieveTicketPendingDelete, setRetrieveTicketPendingDelete] = useState<RetrieveTicket | null>(null);
+  const [revertStockOnRetrieveDelete, setRevertStockOnRetrieveDelete] = useState<boolean>(true);
 
 
   // Calculate items deployed per project and total material expenses (from pullOutTickets, retrieveTickets & allocations)
@@ -1055,16 +1058,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                             <button
                               type="button"
                               onClick={() => {
-                                if (
-                                  window.confirm(
-                                    `Burahin ang Retrieve Ticket ${ticket.id} (${ticket.projectName})?`
-                                  )
-                                ) {
-                                  onDeleteRetrieveTicket(ticket.id, false);
-                                }
+                                setRevertStockOnRetrieveDelete(true);
+                                setRetrieveTicketPendingDelete(ticket);
                               }}
                               className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                              title="Delete this ticket"
+                              title="Delete this ticket (with confirmation)"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1261,20 +1259,61 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   onClick={() => setProjectToSecureDelete(null)}
                   className="px-3.5 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg border border-slate-200 cursor-pointer"
                 >
-                  Cancel
+                  Hindi, Huwag Burahin (No, Cancel)
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm flex items-center space-x-1.5 cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Confirm Delete</span>
+                  <span>Oo, Burahin ang Project (Yes, Delete)</span>
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* Yes or No Delete Confirmation Modal for Retrieve Ticket */}
+      <ConfirmDeleteModal
+        isOpen={!!retrieveTicketPendingDelete}
+        onClose={() => setRetrieveTicketPendingDelete(null)}
+        onConfirm={() => {
+          if (retrieveTicketPendingDelete && onDeleteRetrieveTicket) {
+            onDeleteRetrieveTicket(
+              retrieveTicketPendingDelete.id,
+              revertStockOnRetrieveDelete
+            );
+            setRetrieveTicketPendingDelete(null);
+          }
+        }}
+        title="Kumpirmahin ang Pagbura ng Retrieve Ticket"
+        entityTypeLabel="Retrieve Slip"
+        itemTitle={`Ticket: ${retrieveTicketPendingDelete?.id || ''} — ${retrieveTicketPendingDelete?.projectName || ''}`}
+        itemSubtitle={`Retrieved by: ${retrieveTicketPendingDelete?.retrievedBy || ''} • Date: ${retrieveTicketPendingDelete?.date || ''}`}
+        message="Sigurado ka ba na gusto mong burahin ang Retrieve Slip na ito? Aalisin ito sa kasalukuyang talaan."
+        details={
+          retrieveTicketPendingDelete
+            ? [
+                { label: 'Slip ID', value: retrieveTicketPendingDelete.id },
+                { label: 'Project Name', value: retrieveTicketPendingDelete.projectName },
+                { label: 'Retrieved By', value: retrieveTicketPendingDelete.retrievedBy },
+                {
+                  label: 'Items Returned',
+                  value: `${retrieveTicketPendingDelete.items.reduce((s, i) => s + i.quantity, 0)} units (${retrieveTicketPendingDelete.items.length} lines)`,
+                },
+              ]
+            : []
+        }
+        optionCheckbox={{
+          label: 'I-revert / Bawasan muli ang stock sa warehouse inventory',
+          description: 'Aalisin muli sa warehouse stock ang mga items na naibalik noong ginawa ang slip na ito.',
+          checked: revertStockOnRetrieveDelete,
+          onChange: setRevertStockOnRetrieveDelete,
+        }}
+        confirmButtonText="Oo, Burahin (Yes, Delete)"
+        cancelButtonText="Hindi, Huwag Burahin (No, Cancel)"
+      />
     </div>
   );
 };

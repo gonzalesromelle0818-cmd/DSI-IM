@@ -342,16 +342,16 @@ export const RemoveProjectModal: React.FC<RemoveProjectModalProps> = ({
                 <button
                   type="button"
                   onClick={cancelDeleteConfirm}
-                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-white rounded-lg border border-slate-200 cursor-pointer"
+                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white bg-slate-100 rounded-lg border border-slate-200 cursor-pointer"
                 >
-                  Cancel
+                  Hindi, Huwag Burahin (No, Cancel)
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm flex items-center space-x-1.5 cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Authorize & Delete Project</span>
+                  <span>Oo, Burahin ang Project (Yes, Delete)</span>
                 </button>
               </div>
             </form>
@@ -412,16 +412,16 @@ export const RemoveProjectModal: React.FC<RemoveProjectModalProps> = ({
                 <button
                   type="button"
                   onClick={cancelDeleteConfirm}
-                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-white rounded-lg border border-slate-200 cursor-pointer"
+                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white bg-slate-100 rounded-lg border border-slate-200 cursor-pointer"
                 >
-                  Cancel
+                  Hindi, Huwag Burahin (No, Cancel)
                 </button>
                 <button
                   type="submit"
                   className="px-4 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm flex items-center space-x-1.5 cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Authorize & Delete All Selected</span>
+                  <span>Oo, Burahin ang mga Napili (Yes, Delete)</span>
                 </button>
               </div>
             </form>

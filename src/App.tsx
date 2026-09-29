@@ -8,6 +8,7 @@ import {
   ManpowerPositionRate,
   PurchaseRecord,
   RetrieveTicket,
+  DeletedHistoryAction,
 } from './types';
 import { INITIAL_INVENTORY } from './data/mockInventory';
 import { INITIAL_PROJECTS } from './data/initialProjects';
@@ -37,6 +38,9 @@ import { ManageManpowerModal } from './components/ManageManpowerModal';
 import { LoginScreen } from './components/LoginScreen';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { RestoreConfirmationModal } from './components/RestoreConfirmationModal';
+import { ConfirmDeleteModal } from './components/ConfirmDeleteModal';
+import { ConfirmUndoModal } from './components/ConfirmUndoModal';
+import { UndoFloatingBanner } from './components/UndoFloatingBanner';
 import { authService, AuthUser } from './utils/authService';
 import { exportSystemData, parseBackupFile, SystemBackupPayload } from './utils/backupService';
 import { CheckCircle, AlertCircle } from 'lucide-react';
@@ -348,6 +352,75 @@ export default function App() {
   const [isRestoring, setIsRestoring] = useState(false);
   const [backupToast, setBackupToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
+  // Undo & Delete History States
+  const [lastDeletedAction, setLastDeletedAction] = useState<DeletedHistoryAction | null>(null);
+  const [isUndoConfirmModalOpen, setIsUndoConfirmModalOpen] = useState(false);
+  const [isResetConfirmModalOpen, setIsResetConfirmModalOpen] = useState(false);
+
+  // Function to execute undo with full data restoration
+  const handleConfirmUndo = () => {
+    if (!lastDeletedAction || !lastDeletedAction.previousStateSnapshot) return;
+    const { previousStateSnapshot, title } = lastDeletedAction;
+
+    if (previousStateSnapshot.items) {
+      setItems(previousStateSnapshot.items);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(previousStateSnapshot.items));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    if (previousStateSnapshot.projects) {
+      setProjects(previousStateSnapshot.projects);
+      try {
+        localStorage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(previousStateSnapshot.projects));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    if (previousStateSnapshot.pullOutTickets) {
+      setPullOutTickets(previousStateSnapshot.pullOutTickets);
+      try {
+        localStorage.setItem(PULLOUT_STORAGE_KEY, JSON.stringify(previousStateSnapshot.pullOutTickets));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    if (previousStateSnapshot.deploymentTickets) {
+      setDeploymentTickets(previousStateSnapshot.deploymentTickets);
+      try {
+        localStorage.setItem(DEPLOYMENT_STORAGE_KEY, JSON.stringify(previousStateSnapshot.deploymentTickets));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    if (previousStateSnapshot.purchases) {
+      setPurchases(previousStateSnapshot.purchases);
+      try {
+        localStorage.setItem(PURCHASES_STORAGE_KEY, JSON.stringify(previousStateSnapshot.purchases));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+    if (previousStateSnapshot.retrieveTickets) {
+      setRetrieveTickets(previousStateSnapshot.retrieveTickets);
+      try {
+        localStorage.setItem(RETRIEVE_STORAGE_KEY, JSON.stringify(previousStateSnapshot.retrieveTickets));
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    setLastDeletedAction(null);
+    setIsUndoConfirmModalOpen(false);
+
+    setBackupToast({
+      message: `Tagumpay na naibalik ang: ${title}!`,
+      type: 'success',
+    });
+    setTimeout(() => setBackupToast(null), 5000);
+  };
+
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [detailsItem, setDetailsItem] = useState<InventoryItem | null>(null);
 
@@ -489,6 +562,19 @@ export default function App() {
     const purchase = purchases.find((p) => p.id === purchaseId);
     if (!purchase) return;
 
+    setLastDeletedAction({
+      id: 'del-' + Date.now(),
+      entityType: 'purchase_record',
+      title: `PO Record: ${purchase.poNumber || purchase.id}`,
+      subtitle: `${purchase.description} • Qty: +${purchase.quantity} ${purchase.unit} • Supplier: ${purchase.supplier || 'Warehouse'}`,
+      timestamp: new Date().toLocaleTimeString(),
+      data: { purchase, rollbackStock },
+      previousStateSnapshot: {
+        items: [...items],
+        purchases: [...purchases],
+      },
+    });
+
     if (rollbackStock) {
       setItems((prev) =>
         prev.map((item) => {
@@ -518,10 +604,40 @@ export default function App() {
   };
 
   const handleDeleteProject = (projectId: string) => {
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) return;
+
+    setLastDeletedAction({
+      id: 'del-' + Date.now(),
+      entityType: 'project',
+      title: `Project: ${project.name} (${project.id})`,
+      subtitle: `Location: ${project.location || 'Site Location'} • In-Charge: ${project.leadPerson || 'Unassigned'}`,
+      timestamp: new Date().toLocaleTimeString(),
+      data: project,
+      previousStateSnapshot: {
+        projects: [...projects],
+      },
+    });
+
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
   };
 
   const handleDeleteMultipleProjects = (projectIds: string[]) => {
+    const targets = projects.filter((p) => projectIds.includes(p.id));
+    if (targets.length === 0) return;
+
+    setLastDeletedAction({
+      id: 'del-' + Date.now(),
+      entityType: 'batch_projects',
+      title: `${targets.length} Projects`,
+      subtitle: targets.map((p) => p.name).join(', '),
+      timestamp: new Date().toLocaleTimeString(),
+      data: targets,
+      previousStateSnapshot: {
+        projects: [...projects],
+      },
+    });
+
     const set = new Set(projectIds);
     setProjects((prev) => prev.filter((p) => !set.has(p.id)));
   };
@@ -558,10 +674,40 @@ export default function App() {
   };
 
   const handleDeleteDeployment = (ticketId: string) => {
+    const ticket = deploymentTickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+
+    setLastDeletedAction({
+      id: 'del-' + Date.now(),
+      entityType: 'deployment_ticket',
+      title: `Deployment Ticket: ${ticket.id} (${ticket.projectName})`,
+      subtitle: `Supervisor: ${ticket.leadSupervisor || ticket.supervisor || 'Site In-Charge'} • Petsa: ${ticket.deploymentDate}`,
+      timestamp: new Date().toLocaleTimeString(),
+      data: ticket,
+      previousStateSnapshot: {
+        deploymentTickets: [...deploymentTickets],
+      },
+    });
+
     setDeploymentTickets((prev) => prev.filter((t) => t.id !== ticketId));
   };
 
   const handleDeleteMultipleDeployments = (ticketIds: string[]) => {
+    const targets = deploymentTickets.filter((t) => ticketIds.includes(t.id));
+    if (targets.length === 0) return;
+
+    setLastDeletedAction({
+      id: 'del-' + Date.now(),
+      entityType: 'batch_deployment',
+      title: `${targets.length} Deployment Tickets`,
+      subtitle: targets.map((t) => t.id).join(', '),
+      timestamp: new Date().toLocaleTimeString(),
+      data: targets,
+      previousStateSnapshot: {
+        deploymentTickets: [...deploymentTickets],
+      },
+    });
+
     const set = new Set(ticketIds);
     setDeploymentTickets((prev) => prev.filter((t) => !set.has(t.id)));
   };
@@ -687,6 +833,19 @@ export default function App() {
     const ticket = pullOutTickets.find((t) => t.id === ticketId);
     if (!ticket) return;
 
+    setLastDeletedAction({
+      id: 'del-' + Date.now(),
+      entityType: 'pull_out_ticket',
+      title: `Pull Out Ticket: ${ticket.id} (${ticket.projectName})`,
+      subtitle: `Requested by: ${ticket.requestedBy} • ${ticket.items.length} items (${ticket.date})`,
+      timestamp: new Date().toLocaleTimeString(),
+      data: { ticket, returnStock },
+      previousStateSnapshot: {
+        items: [...items],
+        pullOutTickets: [...pullOutTickets],
+      },
+    });
+
     if (returnStock) {
       setItems((prevItems) => {
         const lineMap = new Map<string, number>();
@@ -806,6 +965,19 @@ export default function App() {
     const ticket = retrieveTickets.find((t) => t.id === ticketId);
     if (!ticket) return;
 
+    setLastDeletedAction({
+      id: 'del-' + Date.now(),
+      entityType: 'retrieve_ticket',
+      title: `Retrieve Ticket: ${ticket.id} (${ticket.projectName})`,
+      subtitle: `Retrieved by: ${ticket.retrievedBy} • ${ticket.items.length} items (${ticket.date})`,
+      timestamp: new Date().toLocaleTimeString(),
+      data: { ticket, revertStock },
+      previousStateSnapshot: {
+        items: [...items],
+        retrieveTickets: [...retrieveTickets],
+      },
+    });
+
     if (revertStock) {
       setItems((prevItems) => {
         const lineMap = new Map<string, number>();
@@ -833,6 +1005,22 @@ export default function App() {
   };
 
   const handleDeleteMultipleRetrieveTickets = (ticketIds: string[], revertStock: boolean) => {
+    const targets = retrieveTickets.filter((t) => ticketIds.includes(t.id));
+    if (targets.length === 0) return;
+
+    setLastDeletedAction({
+      id: 'del-' + Date.now(),
+      entityType: 'batch_retrieve',
+      title: `${targets.length} Retrieve Slips`,
+      subtitle: targets.map((t) => t.id).join(', '),
+      timestamp: new Date().toLocaleTimeString(),
+      data: { targets, revertStock },
+      previousStateSnapshot: {
+        items: [...items],
+        retrieveTickets: [...retrieveTickets],
+      },
+    });
+
     ticketIds.forEach((id) => handleDeleteRetrieveTicket(id, revertStock));
   };
 
@@ -877,10 +1065,40 @@ export default function App() {
   };
 
   const handleDeleteItem = (itemId: string) => {
+    const target = items.find((i) => i.id === itemId);
+    if (!target) return;
+
+    setLastDeletedAction({
+      id: 'del-' + Date.now(),
+      entityType: 'inventory_item',
+      title: `[${target.assetId}] ${target.description}`,
+      subtitle: `Category: ${target.category} • Kasalukuyang Stock: ${target.stockQty} ${target.unit}`,
+      timestamp: new Date().toLocaleTimeString(),
+      data: target,
+      previousStateSnapshot: {
+        items: [...items],
+      },
+    });
+
     setItems((prev) => prev.filter((item) => item.id !== itemId));
   };
 
   const handleDeleteMultiple = (itemIds: string[]) => {
+    const targets = items.filter((i) => itemIds.includes(i.id));
+    if (targets.length === 0) return;
+
+    setLastDeletedAction({
+      id: 'del-' + Date.now(),
+      entityType: 'batch_inventory',
+      title: `${targets.length} Inventory Items`,
+      subtitle: targets.map((t) => t.assetId).join(', '),
+      timestamp: new Date().toLocaleTimeString(),
+      data: targets,
+      previousStateSnapshot: {
+        items: [...items],
+      },
+    });
+
     const set = new Set(itemIds);
     setItems((prev) => prev.filter((item) => !set.has(item.id)));
   };
@@ -903,6 +1121,20 @@ export default function App() {
   };
 
   const handleClearAllInventory = () => {
+    if (items.length === 0) return;
+
+    setLastDeletedAction({
+      id: 'del-' + Date.now(),
+      entityType: 'all_inventory',
+      title: `Buong Inventory Catalog (${items.length} assets)`,
+      subtitle: 'Lahat ng inventory records sa warehouse',
+      timestamp: new Date().toLocaleTimeString(),
+      data: [...items],
+      previousStateSnapshot: {
+        items: [...items],
+      },
+    });
+
     setItems([]);
     try {
       localStorage.removeItem(STORAGE_KEY);
@@ -912,7 +1144,12 @@ export default function App() {
   };
 
   const handleResetData = () => {
+    setIsResetConfirmModalOpen(true);
+  };
+
+  const handleConfirmResetData = () => {
     handleClearAllInventory();
+    setIsResetConfirmModalOpen(false);
   };
 
   // Download / Export System Data Backup
@@ -1052,6 +1289,8 @@ export default function App() {
           user={currentUser}
           onLogout={handleLogout}
           onChangePassword={() => setIsChangePasswordModalOpen(true)}
+          onRequestUndo={() => setIsUndoConfirmModalOpen(true)}
+          deletedAction={lastDeletedAction}
         />
 
         {/* Dynamic Views based on active tab */}
@@ -1327,6 +1566,35 @@ export default function App() {
         payload={restorePayload}
         fileName={restoreFileName}
         isRestoring={isRestoring}
+      />
+
+      {/* Floating Undo Banner when any data was deleted */}
+      <UndoFloatingBanner
+        deletedAction={lastDeletedAction}
+        onRequestUndo={() => setIsUndoConfirmModalOpen(true)}
+        onDismiss={() => setLastDeletedAction(null)}
+      />
+
+      {/* Yes or No Confirmation Modal for Undo Data Restoration */}
+      <ConfirmUndoModal
+        isOpen={isUndoConfirmModalOpen}
+        onClose={() => setIsUndoConfirmModalOpen(false)}
+        onConfirm={handleConfirmUndo}
+        deletedAction={lastDeletedAction}
+      />
+
+      {/* Yes or No Confirmation Modal for Reset Demo Data */}
+      <ConfirmDeleteModal
+        isOpen={isResetConfirmModalOpen}
+        onClose={() => setIsResetConfirmModalOpen(false)}
+        onConfirm={handleConfirmResetData}
+        title="Kumpirmahin ang Pag-Reset ng Data (Reset Demo Data)"
+        entityTypeLabel="System Reset"
+        itemTitle={`I-clear ang Lahat ng Inventory Items (${items.length} items)`}
+        itemSubtitle="Ito ay magbabalik ng malinis na listahan ng mga asset sa warehouse."
+        message="Sigurado ka ba na gusto mong i-clear ang inventory data? Maaari itong i-undo pagkatapos kung kinakailangan."
+        confirmButtonText="Oo, I-Reset (Yes, Reset)"
+        cancelButtonText="Hindi, Huwag I-Reset (No, Cancel)"
       />
 
       {/* Floating System Toast Notification for Backup/Restore Feedback */}

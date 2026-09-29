@@ -42,6 +42,7 @@ import {
 import { generateDeploymentPDF } from '../utils/generateDeploymentPDF';
 import { DeploymentSlipModal } from './DeploymentSlipModal';
 import { DeploymentScheduleView } from './DeploymentScheduleView';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 interface DeploymentViewProps {
   tickets: DeploymentTicket[];
@@ -75,6 +76,7 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
   const [selectedStatusFilter, setSelectedStatusFilter] = useState<string>('all');
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
   const [slipTicket, setSlipTicket] = useState<DeploymentTicket | null>(null);
+  const [ticketPendingDelete, setTicketPendingDelete] = useState<DeploymentTicket | null>(null);
 
   const toggleExpand = (id: string) => {
     setExpandedTicketId((prev) => (prev === id ? null : id));
@@ -643,9 +645,9 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
                       </button>
 
                       <button
-                        onClick={() => onDeleteTicket(ticket.id)}
+                        onClick={() => setTicketPendingDelete(ticket)}
                         className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                        title="Delete Ticket"
+                        title="Delete Ticket (with confirmation)"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -848,6 +850,41 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
         onClose={() => setSlipTicket(null)}
         ticket={slipTicket}
         projects={projects}
+      />
+
+      {/* Yes or No Delete Confirmation Modal */}
+      <ConfirmDeleteModal
+        isOpen={!!ticketPendingDelete}
+        onClose={() => setTicketPendingDelete(null)}
+        onConfirm={() => {
+          if (ticketPendingDelete) {
+            onDeleteTicket(ticketPendingDelete.id);
+            setTicketPendingDelete(null);
+          }
+        }}
+        title="Kumpirmahin ang Pagbura ng Deployment Ticket"
+        entityTypeLabel="Deployment Ticket"
+        itemTitle={`Ticket: ${ticketPendingDelete?.id || ''} — ${ticketPendingDelete?.projectName || ''}`}
+        itemSubtitle={`Lead Supervisor: ${ticketPendingDelete?.leadSupervisor || ticketPendingDelete?.supervisor || 'Site In-Charge'} • Date: ${ticketPendingDelete?.deploymentDate || ''}`}
+        message="Sigurado ka ba na gusto mong burahin ang Deployment Ticket na ito? Aalisin ito sa database ng manpower at deployment."
+        details={
+          ticketPendingDelete
+            ? [
+                { label: 'Ticket ID', value: ticketPendingDelete.id },
+                { label: 'Project Name', value: ticketPendingDelete.projectName },
+                {
+                  label: 'Heads Deployed',
+                  value: `${ticketPendingDelete.lines.reduce((s, l) => s + (l.quantity || 0), 0)} manpower heads`,
+                },
+                {
+                  label: 'Total Cost',
+                  value: formatCurrency(ticketPendingDelete.totalCost || 0),
+                },
+              ]
+            : []
+        }
+        confirmButtonText="Oo, Burahin (Yes, Delete)"
+        cancelButtonText="Hindi, Huwag Burahin (No, Cancel)"
       />
     </div>
   );

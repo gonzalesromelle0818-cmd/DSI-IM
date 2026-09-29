@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { InventoryItem } from '../types';
 import { getReorderStatus, exportInventoryToCSV, formatCurrency } from '../utils/inventoryHelpers';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 interface InventoryViewProps {
   items: InventoryItem[];
@@ -50,6 +51,7 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
     activeFilterReorder ? 'reorder_needed' : 'all'
   );
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [itemPendingDelete, setItemPendingDelete] = useState<InventoryItem | null>(null);
 
   // Sync if filter reorder triggered from top nav
   React.useEffect(() => {
@@ -653,6 +655,17 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
+
+                          {/* Delete Item (with Yes/No confirmation) */}
+                          {onDeleteItem && (
+                            <button
+                              onClick={() => setItemPendingDelete(item)}
+                              title="Delete Item (with confirmation)"
+                              className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -685,6 +698,35 @@ export const InventoryView: React.FC<InventoryViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Yes or No Delete Confirmation Modal for Inventory Item */}
+      <ConfirmDeleteModal
+        isOpen={!!itemPendingDelete}
+        onClose={() => setItemPendingDelete(null)}
+        onConfirm={() => {
+          if (itemPendingDelete && onDeleteItem) {
+            onDeleteItem(itemPendingDelete.id);
+            setItemPendingDelete(null);
+          }
+        }}
+        title="Kumpirmahin ang Pagbura ng Inventory Item"
+        entityTypeLabel="Inventory Asset"
+        itemTitle={`[${itemPendingDelete?.assetId || ''}] ${itemPendingDelete?.description || ''}`}
+        itemSubtitle={`Category: ${itemPendingDelete?.category || ''} • Kasalukuyang Stock: ${itemPendingDelete?.stockQty || 0} ${itemPendingDelete?.unit || ''}`}
+        message="Sigurado ka ba na gusto mong burahin ang asset na ito sa warehouse inventory? Aalisin ito sa database."
+        details={
+          itemPendingDelete
+            ? [
+                { label: 'Asset ID', value: itemPendingDelete.assetId },
+                { label: 'Category', value: itemPendingDelete.category },
+                { label: 'Stock Qty', value: `${itemPendingDelete.stockQty} ${itemPendingDelete.unit}` },
+                { label: 'Storage Location', value: itemPendingDelete.location || 'Main Bodega' },
+              ]
+            : []
+        }
+        confirmButtonText="Oo, Burahin (Yes, Delete)"
+        cancelButtonText="Hindi, Huwag Burahin (No, Cancel)"
+      />
     </div>
   );
 };

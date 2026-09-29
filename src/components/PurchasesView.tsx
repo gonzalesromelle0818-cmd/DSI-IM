@@ -1058,7 +1058,7 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
                 onClick={() => setDeleteConfirmId(null)}
                 className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
               >
-                Cancel
+                Hindi, Huwag Burahin (No, Cancel)
               </button>
               <button
                 type="button"
@@ -1070,7 +1070,7 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
                 }}
                 className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm cursor-pointer"
               >
-                Confirm Delete
+                Oo, Burahin ang PO Record (Yes, Delete)
               </button>
             </div>
           </div>
@@ -1116,14 +1116,14 @@ export const PurchasesView: React.FC<PurchasesViewProps> = ({
                 onClick={() => setShowBatchDeleteConfirm(false)}
                 className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg cursor-pointer"
               >
-                Cancel
+                Hindi, Huwag Burahin (No, Cancel)
               </button>
               <button
                 type="button"
                 onClick={handleExecuteBatchDelete}
                 className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm cursor-pointer"
               >
-                Yes, Delete ({selectedTableIds.length}) Records
+                Oo, Burahin ang ({selectedTableIds.length}) Records (Yes, Delete)
               </button>
             </div>
           </div>

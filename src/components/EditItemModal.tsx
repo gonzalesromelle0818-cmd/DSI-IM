@@ -301,24 +301,24 @@ export const EditItemModal: React.FC<EditItemModalProps> = ({
           {/* Delete Danger Section */}
           <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
             {isConfirmingDelete ? (
-              <div className="flex items-center space-x-2">
-                <span className="text-xs text-red-600 font-semibold">Confirm delete?</span>
+              <div className="flex items-center space-x-2 bg-rose-50 border border-rose-200 p-2 rounded-lg">
+                <span className="text-xs text-rose-800 font-bold">Siguradong buburahin?</span>
                 <button
                   type="button"
                   onClick={() => {
                     onDelete(item.id);
                     onClose();
                   }}
-                  className="px-3 py-1.5 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 rounded-md"
+                  className="px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-md transition-colors cursor-pointer"
                 >
-                  Yes, Delete Item
+                  Oo, Burahin (Yes, Delete)
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsConfirmingDelete(false)}
-                  className="px-2.5 py-1.5 text-xs text-slate-600 hover:bg-slate-100 rounded-md"
+                  className="px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:bg-white bg-slate-100 rounded-md border border-slate-200 transition-colors cursor-pointer"
                 >
-                  Cancel
+                  Hindi (No, Cancel)
                 </button>
               </div>
             ) : (

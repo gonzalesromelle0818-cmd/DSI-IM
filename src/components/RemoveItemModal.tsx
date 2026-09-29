@@ -689,7 +689,7 @@ export const RemoveItemModal: React.FC<RemoveItemModalProps> = ({
                   onClick={handleCancelSingleDelete}
                   className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
                 >
-                  No, Cancel
+                  Hindi, Huwag Burahin (No, Cancel)
                 </button>
                 <button
                   type="button"
@@ -697,7 +697,7 @@ export const RemoveItemModal: React.FC<RemoveItemModalProps> = ({
                   className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm transition-colors cursor-pointer flex items-center space-x-1.5"
                 >
                   <Trash2 className="w-4 h-4" />
-                  <span>Yes, Remove Item</span>
+                  <span>Oo, Burahin ang Item (Yes, Delete)</span>
                 </button>
               </div>
             </div>
@@ -733,7 +733,7 @@ export const RemoveItemModal: React.FC<RemoveItemModalProps> = ({
                   onClick={() => setIsConfirmingBatchDelete(false)}
                   className="px-4 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
                 >
-                  No, Cancel
+                  Hindi, Huwag Burahin (No, Cancel)
                 </button>
                 <button
                   type="button"
@@ -741,7 +741,7 @@ export const RemoveItemModal: React.FC<RemoveItemModalProps> = ({
                   className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm transition-colors cursor-pointer flex items-center space-x-1.5"
                 >
                   <Trash2 className="w-4 h-4" />
-                  <span>Yes, Remove {selectedIds.length} Items</span>
+                  <span>Oo, Burahin ang ({selectedIds.length}) Items (Yes, Delete)</span>
                 </button>
               </div>
             </div>
