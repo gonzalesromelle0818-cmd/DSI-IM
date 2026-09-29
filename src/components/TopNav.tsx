@@ -32,6 +32,7 @@ interface TopNavProps {
   onChangePassword?: () => void;
   onRequestUndo?: () => void;
   deletedAction?: DeletedHistoryAction | null;
+  undoCount?: number;
 }
 
 export const TopNav: React.FC<TopNavProps> = ({
@@ -47,6 +48,7 @@ export const TopNav: React.FC<TopNavProps> = ({
   onChangePassword,
   onRequestUndo,
   deletedAction,
+  undoCount = 0,
 }) => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -172,11 +174,11 @@ export const TopNav: React.FC<TopNavProps> = ({
                   : 'bg-slate-50 text-slate-400 border border-slate-200 cursor-not-allowed opacity-60'
               }`}
             >
-              <RotateCcw className={`w-3.5 h-3.5 ${deletedAction ? 'text-amber-700' : 'text-slate-400'}`} />
+              <RotateCcw className={`w-3.5 h-3.5 ${deletedAction ? 'text-amber-700 animate-spin-reverse' : 'text-slate-400'}`} />
               <span className="hidden sm:inline">Undo</span>
               {deletedAction && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-amber-500 text-white">
-                  1
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-amber-500 text-white shadow-2xs">
+                  {undoCount > 0 ? undoCount : 1}
                 </span>
               )}
             </button>

@@ -523,7 +523,7 @@ export const PullOutView: React.FC<PullOutViewProps> = ({
                 { label: 'Requested By', value: ticketPendingDelete.requestedBy },
                 {
                   label: 'Dispatched Units',
-                  value: `${ticketPendingDelete.items.reduce((s, i) => s + i.quantity, 0)} units (${ticketPendingDelete.items.length} lines)`,
+                  value: `${(ticketPendingDelete.items || []).reduce((s, i) => s + (i.quantity || 0), 0)} units (${ticketPendingDelete.items?.length || 0} lines)`,
                 },
               ]
             : []

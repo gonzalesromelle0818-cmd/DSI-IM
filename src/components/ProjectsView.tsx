@@ -1300,7 +1300,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 { label: 'Retrieved By', value: retrieveTicketPendingDelete.retrievedBy },
                 {
                   label: 'Items Returned',
-                  value: `${retrieveTicketPendingDelete.items.reduce((s, i) => s + i.quantity, 0)} units (${retrieveTicketPendingDelete.items.length} lines)`,
+                  value: `${(retrieveTicketPendingDelete.items || []).reduce((s, i) => s + (i.quantity || 0), 0)} units (${retrieveTicketPendingDelete.items?.length || 0} lines)`,
                 },
               ]
             : []

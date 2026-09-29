@@ -874,7 +874,7 @@ export const DeploymentView: React.FC<DeploymentViewProps> = ({
                 { label: 'Project Name', value: ticketPendingDelete.projectName },
                 {
                   label: 'Heads Deployed',
-                  value: `${ticketPendingDelete.lines.reduce((s, l) => s + (l.quantity || 0), 0)} manpower heads`,
+                  value: `${(ticketPendingDelete.lines || []).reduce((s, l) => s + (l.quantity || 0), 0)} manpower heads`,
                 },
                 {
                   label: 'Total Cost',

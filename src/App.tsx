@@ -52,6 +52,9 @@ const DEPLOYMENT_STORAGE_KEY = 'dsi_inventory_deployment_v1';
 const MANPOWER_RATES_STORAGE_KEY = 'dsi_inventory_manpower_rates_v1';
 const PURCHASES_STORAGE_KEY = 'dsi_inventory_purchases_v1';
 const RETRIEVE_STORAGE_KEY = 'dsi_inventory_retrieves_v1';
+const UNDO_STORAGE_KEY = 'dsi_undo_history_stack_v2';
+
+const normalizeId = (id?: string) => (id || '').trim().toLowerCase();
 
 const INITIAL_PURCHASES: PurchaseRecord[] = [
   {
@@ -352,10 +355,40 @@ export default function App() {
   const [isRestoring, setIsRestoring] = useState(false);
   const [backupToast, setBackupToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
-  // Undo & Delete History States
-  const [lastDeletedAction, setLastDeletedAction] = useState<DeletedHistoryAction | null>(null);
+  // Undo & Delete History States with persistent stack
+  const [undoHistory, setUndoHistory] = useState<DeletedHistoryAction[]>(() => {
+    try {
+      const saved = localStorage.getItem(UNDO_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch (e) {
+      console.error('Failed to parse saved undo history', e);
+    }
+    return [];
+  });
+  const [isBannerDismissed, setIsBannerDismissed] = useState(false);
   const [isUndoConfirmModalOpen, setIsUndoConfirmModalOpen] = useState(false);
   const [isResetConfirmModalOpen, setIsResetConfirmModalOpen] = useState(false);
+
+  // The most recent deletion is active for undo
+  const lastDeletedAction = undoHistory.length > 0 ? undoHistory[0] : null;
+  const activeBannerAction = !isBannerDismissed ? lastDeletedAction : null;
+
+  // Add action to the top of undo history stack and persist
+  const pushDeletedAction = (action: DeletedHistoryAction) => {
+    setUndoHistory((prev) => {
+      const updated = [action, ...prev.slice(0, 19)]; // Keep up to 20 recent actions
+      try {
+        localStorage.setItem(UNDO_STORAGE_KEY, JSON.stringify(updated));
+      } catch (e) {
+        console.error('Failed to save undo history to localStorage', e);
+      }
+      return updated;
+    });
+    setIsBannerDismissed(false);
+  };
 
   // Function to execute undo with full data restoration
   const handleConfirmUndo = () => {
@@ -411,8 +444,19 @@ export default function App() {
       }
     }
 
-    setLastDeletedAction(null);
+    // Pop restored action from undo history stack
+    setUndoHistory((prev) => {
+      const remaining = prev.slice(1);
+      try {
+        localStorage.setItem(UNDO_STORAGE_KEY, JSON.stringify(remaining));
+      } catch (e) {
+        console.error(e);
+      }
+      return remaining;
+    });
+
     setIsUndoConfirmModalOpen(false);
+    setIsBannerDismissed(false);
 
     setBackupToast({
       message: `Tagumpay na naibalik ang: ${title}!`,
@@ -559,10 +603,11 @@ export default function App() {
 
   // Delete purchase record (with optional rollback)
   const handleDeletePurchaseRecord = (purchaseId: string, rollbackStock: boolean) => {
-    const purchase = purchases.find((p) => p.id === purchaseId);
+    const pKey = normalizeId(purchaseId);
+    const purchase = purchases.find((p) => p.id === purchaseId || normalizeId(p.id) === pKey);
     if (!purchase) return;
 
-    setLastDeletedAction({
+    pushDeletedAction({
       id: 'del-' + Date.now(),
       entityType: 'purchase_record',
       title: `PO Record: ${purchase.poNumber || purchase.id}`,
@@ -579,8 +624,8 @@ export default function App() {
       setItems((prev) =>
         prev.map((item) => {
           const match =
-            item.id === purchase.itemId ||
-            item.assetId.toLowerCase() === purchase.assetId.toLowerCase();
+            normalizeId(item.id) === normalizeId(purchase.itemId) ||
+            normalizeId(item.assetId) === normalizeId(purchase.assetId);
           if (match) {
             const newQty = Math.max(0, item.stockQty - purchase.quantity);
             return {
@@ -595,7 +640,120 @@ export default function App() {
       );
     }
 
-    setPurchases((prev) => prev.filter((p) => p.id !== purchaseId));
+    setPurchases((prev) => prev.filter((p) => p.id !== purchaseId && normalizeId(p.id) !== pKey));
+  };
+
+  // Batch delete purchase records
+  const handleDeleteMultiplePurchases = (purchaseIds: string[], rollbackStock: boolean) => {
+    if (!purchaseIds || purchaseIds.length === 0) return;
+    const targetSet = new Set(purchaseIds.map((id) => normalizeId(id)));
+    const targets = purchases.filter(
+      (p) => targetSet.has(normalizeId(p.id)) || purchaseIds.includes(p.id)
+    );
+    if (targets.length === 0) return;
+
+    pushDeletedAction({
+      id: 'del-' + Date.now(),
+      entityType: 'batch_purchases',
+      title: `${targets.length} Purchase Records`,
+      subtitle: targets.map((p) => p.poNumber || p.id).join(', '),
+      timestamp: new Date().toLocaleTimeString(),
+      data: { targets, rollbackStock },
+      previousStateSnapshot: {
+        items: [...items],
+        purchases: [...purchases],
+      },
+    });
+
+    if (rollbackStock) {
+      setItems((prevItems) => {
+        const deductMap = new Map<string, number>();
+        targets.forEach((purchase) => {
+          const qty = Number(purchase.quantity) || 0;
+          if (qty <= 0) return;
+          if (purchase.itemId) {
+            deductMap.set(normalizeId(purchase.itemId), (deductMap.get(normalizeId(purchase.itemId)) || 0) + qty);
+          }
+          if (purchase.assetId) {
+            deductMap.set(normalizeId(purchase.assetId), (deductMap.get(normalizeId(purchase.assetId)) || 0) + qty);
+          }
+        });
+
+        return prevItems.map((item) => {
+          const k1 = normalizeId(item.id);
+          const k2 = normalizeId(item.assetId);
+          let qty = 0;
+          if (deductMap.has(k1)) qty = deductMap.get(k1)!;
+          else if (deductMap.has(k2)) qty = deductMap.get(k2)!;
+
+          if (qty > 0) {
+            return {
+              ...item,
+              stockQty: Math.max(0, item.stockQty - qty),
+              lastUpdated: new Date().toISOString().slice(0, 10),
+            };
+          }
+          return item;
+        });
+      });
+    }
+
+    setPurchases((prev) =>
+      prev.filter((p) => !targetSet.has(normalizeId(p.id)) && !purchaseIds.includes(p.id))
+    );
+  };
+
+  // Clear all purchases
+  const handleClearAllPurchases = (rollbackStock: boolean) => {
+    if (purchases.length === 0) return;
+
+    pushDeletedAction({
+      id: 'del-' + Date.now(),
+      entityType: 'batch_purchases',
+      title: `Buong Talaan ng Purchases (${purchases.length} records)`,
+      subtitle: 'Lahat ng purchase at stock inflow records',
+      timestamp: new Date().toLocaleTimeString(),
+      data: { targets: [...purchases], rollbackStock },
+      previousStateSnapshot: {
+        items: [...items],
+        purchases: [...purchases],
+      },
+    });
+
+    if (rollbackStock) {
+      setItems((prevItems) => {
+        const deductMap = new Map<string, number>();
+        purchases.forEach((p) => {
+          const qty = Number(p.quantity) || 0;
+          if (qty <= 0) return;
+          if (p.itemId) {
+            deductMap.set(normalizeId(p.itemId), (deductMap.get(normalizeId(p.itemId)) || 0) + qty);
+          }
+          if (p.assetId) {
+            deductMap.set(normalizeId(p.assetId), (deductMap.get(normalizeId(p.assetId)) || 0) + qty);
+          }
+        });
+
+        return prevItems.map((item) => {
+          const k1 = normalizeId(item.id);
+          const k2 = normalizeId(item.assetId);
+          let qty = 0;
+          if (deductMap.has(k1)) qty = deductMap.get(k1)!;
+          else if (deductMap.has(k2)) qty = deductMap.get(k2)!;
+
+          if (qty > 0) {
+            return {
+              ...item,
+              stockQty: Math.max(0, item.stockQty - qty),
+              lastUpdated: new Date().toISOString().slice(0, 10),
+            };
+          }
+          return item;
+        });
+      });
+    }
+
+    setPurchases([]);
   };
 
   // Project Handlers
@@ -604,10 +762,11 @@ export default function App() {
   };
 
   const handleDeleteProject = (projectId: string) => {
-    const project = projects.find((p) => p.id === projectId);
+    const pKey = normalizeId(projectId);
+    const project = projects.find((p) => p.id === projectId || normalizeId(p.id) === pKey);
     if (!project) return;
 
-    setLastDeletedAction({
+    pushDeletedAction({
       id: 'del-' + Date.now(),
       entityType: 'project',
       title: `Project: ${project.name} (${project.id})`,
@@ -619,14 +778,16 @@ export default function App() {
       },
     });
 
-    setProjects((prev) => prev.filter((p) => p.id !== projectId));
+    setProjects((prev) => prev.filter((p) => p.id !== projectId && normalizeId(p.id) !== pKey));
   };
 
   const handleDeleteMultipleProjects = (projectIds: string[]) => {
-    const targets = projects.filter((p) => projectIds.includes(p.id));
+    if (!projectIds || projectIds.length === 0) return;
+    const targetSet = new Set(projectIds.map((id) => normalizeId(id)));
+    const targets = projects.filter((p) => targetSet.has(normalizeId(p.id)) || projectIds.includes(p.id));
     if (targets.length === 0) return;
 
-    setLastDeletedAction({
+    pushDeletedAction({
       id: 'del-' + Date.now(),
       entityType: 'batch_projects',
       title: `${targets.length} Projects`,
@@ -638,8 +799,7 @@ export default function App() {
       },
     });
 
-    const set = new Set(projectIds);
-    setProjects((prev) => prev.filter((p) => !set.has(p.id)));
+    setProjects((prev) => prev.filter((p) => !targetSet.has(normalizeId(p.id)) && !projectIds.includes(p.id)));
   };
 
   // Deployment Handlers
@@ -674,10 +834,11 @@ export default function App() {
   };
 
   const handleDeleteDeployment = (ticketId: string) => {
-    const ticket = deploymentTickets.find((t) => t.id === ticketId);
+    const tKey = normalizeId(ticketId);
+    const ticket = deploymentTickets.find((t) => t.id === ticketId || normalizeId(t.id) === tKey);
     if (!ticket) return;
 
-    setLastDeletedAction({
+    pushDeletedAction({
       id: 'del-' + Date.now(),
       entityType: 'deployment_ticket',
       title: `Deployment Ticket: ${ticket.id} (${ticket.projectName})`,
@@ -689,14 +850,18 @@ export default function App() {
       },
     });
 
-    setDeploymentTickets((prev) => prev.filter((t) => t.id !== ticketId));
+    setDeploymentTickets((prev) => prev.filter((t) => t.id !== ticketId && normalizeId(t.id) !== tKey));
   };
 
   const handleDeleteMultipleDeployments = (ticketIds: string[]) => {
-    const targets = deploymentTickets.filter((t) => ticketIds.includes(t.id));
+    if (!ticketIds || ticketIds.length === 0) return;
+    const targetSet = new Set(ticketIds.map((id) => normalizeId(id)));
+    const targets = deploymentTickets.filter(
+      (t) => targetSet.has(normalizeId(t.id)) || ticketIds.includes(t.id)
+    );
     if (targets.length === 0) return;
 
-    setLastDeletedAction({
+    pushDeletedAction({
       id: 'del-' + Date.now(),
       entityType: 'batch_deployment',
       title: `${targets.length} Deployment Tickets`,
@@ -708,8 +873,9 @@ export default function App() {
       },
     });
 
-    const set = new Set(ticketIds);
-    setDeploymentTickets((prev) => prev.filter((t) => !set.has(t.id)));
+    setDeploymentTickets((prev) =>
+      prev.filter((t) => !targetSet.has(normalizeId(t.id)) && !ticketIds.includes(t.id))
+    );
   };
 
   const handleUpdateDeploymentStatus = (
@@ -830,14 +996,15 @@ export default function App() {
   };
 
   const handleDeletePullOut = (ticketId: string, returnStock: boolean) => {
-    const ticket = pullOutTickets.find((t) => t.id === ticketId);
+    const tKey = normalizeId(ticketId);
+    const ticket = pullOutTickets.find((t) => t.id === ticketId || normalizeId(t.id) === tKey);
     if (!ticket) return;
 
-    setLastDeletedAction({
+    pushDeletedAction({
       id: 'del-' + Date.now(),
       entityType: 'pull_out_ticket',
       title: `Pull Out Ticket: ${ticket.id} (${ticket.projectName})`,
-      subtitle: `Requested by: ${ticket.requestedBy} • ${ticket.items.length} items (${ticket.date})`,
+      subtitle: `Requested by: ${ticket.requestedBy} • ${(ticket.items || []).length} items (${ticket.date})`,
       timestamp: new Date().toLocaleTimeString(),
       data: { ticket, returnStock },
       previousStateSnapshot: {
@@ -846,21 +1013,46 @@ export default function App() {
       },
     });
 
-    if (returnStock) {
+    if (returnStock && Array.isArray(ticket.items)) {
       setItems((prevItems) => {
         const lineMap = new Map<string, number>();
         ticket.items.forEach((line) => {
-          lineMap.set(line.itemId, (lineMap.get(line.itemId) || 0) + line.quantity);
+          if (!line) return;
+          const qty = Number(line.quantity) || 0;
+          if (qty <= 0) return;
+          if (line.itemId) {
+            lineMap.set(normalizeId(line.itemId), (lineMap.get(normalizeId(line.itemId)) || 0) + qty);
+          }
+          if (line.assetId) {
+            lineMap.set(normalizeId(line.assetId), (lineMap.get(normalizeId(line.assetId)) || 0) + qty);
+          }
         });
 
         return prevItems.map((item) => {
-          if (lineMap.has(item.id)) {
-            const qtyToReturn = lineMap.get(item.id)!;
+          const itemKey1 = normalizeId(item.id);
+          const itemKey2 = normalizeId(item.assetId);
+          let qtyToReturn = 0;
+          if (lineMap.has(itemKey1)) {
+            qtyToReturn = lineMap.get(itemKey1)!;
+          } else if (lineMap.has(itemKey2)) {
+            qtyToReturn = lineMap.get(itemKey2)!;
+          }
+
+          if (qtyToReturn > 0) {
             const newStock = item.stockQty + qtyToReturn;
+            const ticketPId = normalizeId(ticket.projectId);
+            const ticketPName = normalizeId(ticket.projectName);
 
             let allocations = (item.projectAllocations || [])
               .map((alloc) => {
-                if (alloc.projectId === ticket.projectId) {
+                const aId = normalizeId(alloc.projectId);
+                const aName = normalizeId(alloc.projectName);
+                if (
+                  (aId && aId === ticketPId) ||
+                  (aName && aName === ticketPName) ||
+                  (aId && aId === ticketPName) ||
+                  (aName && aName === ticketPId)
+                ) {
                   return {
                     ...alloc,
                     quantity: Math.max(0, alloc.quantity - qtyToReturn),
@@ -883,11 +1075,72 @@ export default function App() {
       });
     }
 
-    setPullOutTickets((prev) => prev.filter((t) => t.id !== ticketId));
+    setPullOutTickets((prev) => prev.filter((t) => t.id !== ticketId && normalizeId(t.id) !== tKey));
   };
 
   const handleDeleteMultiplePullOuts = (ticketIds: string[], returnStock: boolean) => {
-    ticketIds.forEach((id) => handleDeletePullOut(id, returnStock));
+    if (!ticketIds || ticketIds.length === 0) return;
+    const targetSet = new Set(ticketIds.map((id) => normalizeId(id)));
+    const targets = pullOutTickets.filter(
+      (t) => targetSet.has(normalizeId(t.id)) || ticketIds.includes(t.id)
+    );
+    if (targets.length === 0) return;
+
+    pushDeletedAction({
+      id: 'del-' + Date.now(),
+      entityType: 'batch_pull_out',
+      title: `${targets.length} Pull Out Tickets`,
+      subtitle: targets.map((t) => t.id).join(', '),
+      timestamp: new Date().toLocaleTimeString(),
+      data: { targets, returnStock },
+      previousStateSnapshot: {
+        items: [...items],
+        pullOutTickets: [...pullOutTickets],
+      },
+    });
+
+    if (returnStock) {
+      setItems((prevItems) => {
+        const lineMap = new Map<string, number>();
+        targets.forEach((ticket) => {
+          (ticket.items || []).forEach((line) => {
+            if (!line) return;
+            const qty = Number(line.quantity) || 0;
+            if (qty <= 0) return;
+            if (line.itemId) {
+              lineMap.set(normalizeId(line.itemId), (lineMap.get(normalizeId(line.itemId)) || 0) + qty);
+            }
+            if (line.assetId) {
+              lineMap.set(normalizeId(line.assetId), (lineMap.get(normalizeId(line.assetId)) || 0) + qty);
+            }
+          });
+        });
+
+        return prevItems.map((item) => {
+          const itemKey1 = normalizeId(item.id);
+          const itemKey2 = normalizeId(item.assetId);
+          let qtyToReturn = 0;
+          if (lineMap.has(itemKey1)) {
+            qtyToReturn = lineMap.get(itemKey1)!;
+          } else if (lineMap.has(itemKey2)) {
+            qtyToReturn = lineMap.get(itemKey2)!;
+          }
+
+          if (qtyToReturn > 0) {
+            return {
+              ...item,
+              stockQty: item.stockQty + qtyToReturn,
+              lastUpdated: new Date().toISOString().slice(0, 10),
+            };
+          }
+          return item;
+        });
+      });
+    }
+
+    setPullOutTickets((prev) =>
+      prev.filter((t) => !targetSet.has(normalizeId(t.id)) && !ticketIds.includes(t.id))
+    );
   };
 
   // Retrieve Tickets Handlers (Return surplus/unused items from site back to inventory)
@@ -962,14 +1215,15 @@ export default function App() {
   };
 
   const handleDeleteRetrieveTicket = (ticketId: string, revertStock: boolean) => {
-    const ticket = retrieveTickets.find((t) => t.id === ticketId);
+    const tKey = normalizeId(ticketId);
+    const ticket = retrieveTickets.find((t) => t.id === ticketId || normalizeId(t.id) === tKey);
     if (!ticket) return;
 
-    setLastDeletedAction({
+    pushDeletedAction({
       id: 'del-' + Date.now(),
       entityType: 'retrieve_ticket',
       title: `Retrieve Ticket: ${ticket.id} (${ticket.projectName})`,
-      subtitle: `Retrieved by: ${ticket.retrievedBy} • ${ticket.items.length} items (${ticket.date})`,
+      subtitle: `Retrieved by: ${ticket.retrievedBy} • ${(ticket.items || []).length} items (${ticket.date})`,
       timestamp: new Date().toLocaleTimeString(),
       data: { ticket, revertStock },
       previousStateSnapshot: {
@@ -978,16 +1232,32 @@ export default function App() {
       },
     });
 
-    if (revertStock) {
+    if (revertStock && Array.isArray(ticket.items)) {
       setItems((prevItems) => {
         const lineMap = new Map<string, number>();
         ticket.items.forEach((line) => {
-          lineMap.set(line.itemId, (lineMap.get(line.itemId) || 0) + line.quantity);
+          if (!line) return;
+          const qty = Number(line.quantity) || 0;
+          if (qty <= 0) return;
+          if (line.itemId) {
+            lineMap.set(normalizeId(line.itemId), (lineMap.get(normalizeId(line.itemId)) || 0) + qty);
+          }
+          if (line.assetId) {
+            lineMap.set(normalizeId(line.assetId), (lineMap.get(normalizeId(line.assetId)) || 0) + qty);
+          }
         });
 
         return prevItems.map((item) => {
-          if (lineMap.has(item.id)) {
-            const qtyToDeduct = lineMap.get(item.id)!;
+          const itemKey1 = normalizeId(item.id);
+          const itemKey2 = normalizeId(item.assetId);
+          let qtyToDeduct = 0;
+          if (lineMap.has(itemKey1)) {
+            qtyToDeduct = lineMap.get(itemKey1)!;
+          } else if (lineMap.has(itemKey2)) {
+            qtyToDeduct = lineMap.get(itemKey2)!;
+          }
+
+          if (qtyToDeduct > 0) {
             const newStock = Math.max(0, item.stockQty - qtyToDeduct);
             return {
               ...item,
@@ -1001,14 +1271,18 @@ export default function App() {
       });
     }
 
-    setRetrieveTickets((prev) => prev.filter((t) => t.id !== ticketId));
+    setRetrieveTickets((prev) => prev.filter((t) => t.id !== ticketId && normalizeId(t.id) !== tKey));
   };
 
   const handleDeleteMultipleRetrieveTickets = (ticketIds: string[], revertStock: boolean) => {
-    const targets = retrieveTickets.filter((t) => ticketIds.includes(t.id));
+    if (!ticketIds || ticketIds.length === 0) return;
+    const targetSet = new Set(ticketIds.map((id) => normalizeId(id)));
+    const targets = retrieveTickets.filter(
+      (t) => targetSet.has(normalizeId(t.id)) || ticketIds.includes(t.id)
+    );
     if (targets.length === 0) return;
 
-    setLastDeletedAction({
+    pushDeletedAction({
       id: 'del-' + Date.now(),
       entityType: 'batch_retrieve',
       title: `${targets.length} Retrieve Slips`,
@@ -1021,7 +1295,48 @@ export default function App() {
       },
     });
 
-    ticketIds.forEach((id) => handleDeleteRetrieveTicket(id, revertStock));
+    if (revertStock) {
+      setItems((prevItems) => {
+        const lineMap = new Map<string, number>();
+        targets.forEach((ticket) => {
+          (ticket.items || []).forEach((line) => {
+            if (!line) return;
+            const qty = Number(line.quantity) || 0;
+            if (qty <= 0) return;
+            if (line.itemId) {
+              lineMap.set(normalizeId(line.itemId), (lineMap.get(normalizeId(line.itemId)) || 0) + qty);
+            }
+            if (line.assetId) {
+              lineMap.set(normalizeId(line.assetId), (lineMap.get(normalizeId(line.assetId)) || 0) + qty);
+            }
+          });
+        });
+
+        return prevItems.map((item) => {
+          const itemKey1 = normalizeId(item.id);
+          const itemKey2 = normalizeId(item.assetId);
+          let qtyToDeduct = 0;
+          if (lineMap.has(itemKey1)) {
+            qtyToDeduct = lineMap.get(itemKey1)!;
+          } else if (lineMap.has(itemKey2)) {
+            qtyToDeduct = lineMap.get(itemKey2)!;
+          }
+
+          if (qtyToDeduct > 0) {
+            return {
+              ...item,
+              stockQty: Math.max(0, item.stockQty - qtyToDeduct),
+              lastUpdated: new Date().toISOString().slice(0, 10),
+            };
+          }
+          return item;
+        });
+      });
+    }
+
+    setRetrieveTickets((prev) =>
+      prev.filter((t) => !targetSet.has(normalizeId(t.id)) && !ticketIds.includes(t.id))
+    );
   };
 
   const handleReturnStock = (itemId: string, projectId: string, quantityToReturn: number) => {
@@ -1065,10 +1380,11 @@ export default function App() {
   };
 
   const handleDeleteItem = (itemId: string) => {
-    const target = items.find((i) => i.id === itemId);
+    const targetKey = normalizeId(itemId);
+    const target = items.find((i) => i.id === itemId || normalizeId(i.id) === targetKey || normalizeId(i.assetId) === targetKey);
     if (!target) return;
 
-    setLastDeletedAction({
+    pushDeletedAction({
       id: 'del-' + Date.now(),
       entityType: 'inventory_item',
       title: `[${target.assetId}] ${target.description}`,
@@ -1080,14 +1396,18 @@ export default function App() {
       },
     });
 
-    setItems((prev) => prev.filter((item) => item.id !== itemId));
+    setItems((prev) => prev.filter((item) => item.id !== itemId && normalizeId(item.id) !== targetKey && normalizeId(item.assetId) !== targetKey));
   };
 
   const handleDeleteMultiple = (itemIds: string[]) => {
-    const targets = items.filter((i) => itemIds.includes(i.id));
+    if (!itemIds || itemIds.length === 0) return;
+    const targetSet = new Set(itemIds.map((id) => normalizeId(id)));
+    const targets = items.filter(
+      (i) => targetSet.has(normalizeId(i.id)) || targetSet.has(normalizeId(i.assetId)) || itemIds.includes(i.id)
+    );
     if (targets.length === 0) return;
 
-    setLastDeletedAction({
+    pushDeletedAction({
       id: 'del-' + Date.now(),
       entityType: 'batch_inventory',
       title: `${targets.length} Inventory Items`,
@@ -1099,8 +1419,9 @@ export default function App() {
       },
     });
 
-    const set = new Set(itemIds);
-    setItems((prev) => prev.filter((item) => !set.has(item.id)));
+    setItems((prev) =>
+      prev.filter((item) => !targetSet.has(normalizeId(item.id)) && !targetSet.has(normalizeId(item.assetId)) && !itemIds.includes(item.id))
+    );
   };
 
   const handleDeductStock = (itemId: string, deductQty: number, reason: string) => {
@@ -1123,7 +1444,7 @@ export default function App() {
   const handleClearAllInventory = () => {
     if (items.length === 0) return;
 
-    setLastDeletedAction({
+    pushDeletedAction({
       id: 'del-' + Date.now(),
       entityType: 'all_inventory',
       title: `Buong Inventory Catalog (${items.length} assets)`,
@@ -1291,6 +1612,7 @@ export default function App() {
           onChangePassword={() => setIsChangePasswordModalOpen(true)}
           onRequestUndo={() => setIsUndoConfirmModalOpen(true)}
           deletedAction={lastDeletedAction}
+          undoCount={undoHistory.length}
         />
 
         {/* Dynamic Views based on active tab */}
@@ -1395,6 +1717,8 @@ export default function App() {
               onOpenAddItemModal={handleOpenAddModal}
               onAddDirectPurchase={handleAddDirectPurchase}
               onDeletePurchaseRecord={handleDeletePurchaseRecord}
+              onDeleteMultiplePurchases={handleDeleteMultiplePurchases}
+              onClearAllPurchases={handleClearAllPurchases}
             />
           )}
         </main>
@@ -1570,9 +1894,10 @@ export default function App() {
 
       {/* Floating Undo Banner when any data was deleted */}
       <UndoFloatingBanner
-        deletedAction={lastDeletedAction}
+        deletedAction={activeBannerAction}
         onRequestUndo={() => setIsUndoConfirmModalOpen(true)}
-        onDismiss={() => setLastDeletedAction(null)}
+        onDismiss={() => setIsBannerDismissed(true)}
+        undoCount={undoHistory.length}
       />
 
       {/* Yes or No Confirmation Modal for Undo Data Restoration */}
